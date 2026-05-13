@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Hedge Features
 
 `hedge-features` is a file-in, file-out GIS enrichment tool for hedgerow segments. It reads a hedgerow layer, computes ecological and landscape-context features from open data, appends them as new columns, and writes an enriched output dataset plus run metadata.
@@ -188,4 +189,4 @@ When trained species models are present in the framework bundle and the screenin
 
 This design keeps screening logic versioned and separate from Streamlit UI code.
 
-streamlit run .\hedge_features\ui_streamlit.py
+ streamlit run .\hedge_features\ui_streamlit.py
