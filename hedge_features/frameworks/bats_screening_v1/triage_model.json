@@ -1,0 +1,24 @@
+{
+  "model_type": "linear_logistic_v1",
+  "intercept": -0.05,
+  "missing_fraction_penalty": 0.25,
+  "output_clip_min": 0.0,
+  "output_clip_max": 1.0,
+  "terms": [
+    { "feature": "geom_length_m", "weight": 0.25, "transform": "zscore_log1p", "center": 4.8, "scale": 1.2, "clip_min": -3, "clip_max": 3 },
+    { "feature": "geom_sinuosity", "weight": 0.22, "transform": "zscore", "center": 1.2, "scale": 0.5, "clip_min": -3, "clip_max": 3 },
+    { "feature": "net_degree_max", "weight": 0.15, "transform": "zscore", "center": 2.0, "scale": 1.0, "clip_min": -3, "clip_max": 3 },
+    { "feature": "dist_os_river_m", "weight": 0.28, "transform": "distance_decay", "scale": 120.0 },
+    { "feature": "dist_os_road_m", "weight": 0.18, "transform": "distance_decay", "scale": 80.0 },
+    { "feature": "buf100_worldcover_tree_pct", "weight": 0.35, "transform": "unit_interval_clip" },
+    { "feature": "buf100_worldcover_built_pct", "weight": -0.32, "transform": "unit_interval_clip" },
+    { "feature": "buf100_worldcover_wetland_pct", "weight": 0.18, "transform": "unit_interval_clip" },
+    { "feature": "buf100_worldcover_water_pct", "weight": 0.12, "transform": "unit_interval_clip" },
+    { "feature": "buf100_nightlight_mean", "weight": -0.16, "transform": "zscore", "center": 15.0, "scale": 20.0, "clip_min": -3, "clip_max": 3 },
+    { "feature": "roostpx_struct_proxy_score", "weight": 0.42, "transform": "unit_interval_clip" },
+    { "feature": "mhb_roost_proxy_score", "weight": 0.28, "transform": "unit_interval_clip" },
+    { "feature": "mhb_dem_shelter_idx_100m", "weight": 0.14, "transform": "unit_interval_clip" },
+    { "feature": "buf100_os_road_density_m_per_ha", "weight": -0.08, "transform": "zscore", "center": 30.0, "scale": 40.0, "clip_min": -3, "clip_max": 3 }
+  ]
+}
+

@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "band_thresholds": {
+    "low_upper": 0.4,
+    "high_lower": 0.7
+  },
+  "policy_thresholds": {
+    "Recall-first": 0.45,
+    "Balanced": 0.6,
+    "Budget-first": 0.75
+  }
+}
+

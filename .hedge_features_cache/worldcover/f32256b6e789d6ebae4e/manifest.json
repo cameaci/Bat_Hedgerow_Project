@@ -1,0 +1,21 @@
+{
+  "provider": "pc_stac_raster",
+  "stac_url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+  "collection": "esa-worldcover",
+  "asset": "map",
+  "item_count": 4,
+  "item_ids": [
+    "ESA_WorldCover_10m_2021_v200_N51W006",
+    "ESA_WorldCover_10m_2021_v200_N51W003",
+    "ESA_WorldCover_10m_2020_v100_N51W006",
+    "ESA_WorldCover_10m_2020_v100_N51W003"
+  ],
+  "bbox_wgs84": [
+    -3.1484400163452873,
+    53.17502388183756,
+    -2.773494133311088,
+    53.293369848466114
+  ],
+  "version": "live-stac",
+  "cache_hit": false
+}

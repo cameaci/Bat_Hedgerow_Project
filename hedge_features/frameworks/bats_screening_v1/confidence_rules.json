@@ -1,0 +1,44 @@
+{
+  "version": "1.0.0",
+  "default_strictness": "Standard",
+  "major_reason_codes": [
+    "MERGE_LEFT_ONLY",
+    "LOW_GIS_COVERAGE",
+    "OUTSIDE_LABEL_DOMAIN",
+    "OUTLIER_FEATURE_VALUES",
+    "STATUS_DATA_GAPS",
+    "MISSING_REQUIRED_FEATURES"
+  ],
+  "status_ok_values": ["ok"],
+  "merge_left_only_values": ["left_only"],
+  "strictness_profiles": {
+    "Standard": {
+      "low_coverage_threshold": 0.45,
+      "severe_missingness_threshold": 0.35,
+      "outside_label_domain_static_hsi_enabled": true,
+      "low_if_missing_required": true,
+      "low_if_low_coverage": true,
+      "low_if_major_reason_count_gte": 2,
+      "low_if_any_reason_codes": []
+    },
+    "Conservative": {
+      "low_coverage_threshold": 0.6,
+      "severe_missingness_threshold": 0.5,
+      "outside_label_domain_static_hsi_enabled": true,
+      "low_if_missing_required": true,
+      "low_if_low_coverage": true,
+      "low_if_major_reason_count_gte": 2,
+      "low_if_any_reason_codes": []
+    },
+    "Lenient": {
+      "low_coverage_threshold": 0.3,
+      "severe_missingness_threshold": 0.2,
+      "outside_label_domain_static_hsi_enabled": false,
+      "low_if_missing_required": true,
+      "low_if_low_coverage": true,
+      "low_if_major_reason_count_gte": 2,
+      "low_if_any_reason_codes": []
+    }
+  }
+}
+

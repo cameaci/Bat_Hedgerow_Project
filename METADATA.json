@@ -1,0 +1,293 @@
+{
+  "tool_name": "hedge-features",
+  "tool_version": "0.1.0",
+  "run_timestamp_utc": "2026-02-23T09:58:18.557064+00:00",
+  "input_path": "tmp_test_deploy.geojson",
+  "output_path": "tmp_enriched_temporal2.gpkg",
+  "working_crs": "EPSG:27700",
+  "export_crs": null,
+  "profile_name": "bats_v1",
+  "profile_path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\hedge_features\\profiles\\bats_v1.yaml",
+  "datasets": [
+    {
+      "name": "open_meteo_archive",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\open_meteo_archive",
+      "license": "Open data (provider terms)",
+      "attribution": "Weather data from Open-Meteo archive API.",
+      "version": "live-api",
+      "mode": "on_demand_api",
+      "optional": true,
+      "metadata": {
+        "provider": "open_meteo_archive",
+        "url": "https://archive-api.open-meteo.com/v1/archive",
+        "timezone": "Europe/London",
+        "request_count": 0,
+        "cache_hits": 1,
+        "cache_dir": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\open_meteo_archive",
+        "exists": true,
+        "filesize_bytes": 0,
+        "mtime_utc": "2026-02-23T09:54:39.229868+00:00"
+      }
+    },
+    {
+      "name": "os_open_roads",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\os_open_roads\\adfbac2fbd52592c33ec\\os_open_roads.gpkg",
+      "license": "ODbL 1.0",
+      "attribution": "Contains OpenStreetMap data \u00a9 OpenStreetMap contributors (ODbL).",
+      "version": "live-overpass",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "osm_overpass_lines",
+        "provider_url": "https://overpass-api.de/api/interpreter",
+        "query_kind": "roads",
+        "cache_hit": true,
+        "bbox_wgs84": [
+          -0.272013362635542,
+          51.45505420211711,
+          -0.11798177747195739,
+          51.549945230718365
+        ],
+        "version": "live-overpass",
+        "exists": true,
+        "filesize_bytes": 7811072,
+        "mtime_utc": "2026-02-22T23:03:49.253924+00:00"
+      }
+    },
+    {
+      "name": "os_open_rivers",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\os_open_rivers\\71d7b532b1ad152e92ae\\os_open_rivers.gpkg",
+      "license": "ODbL 1.0",
+      "attribution": "Contains OpenStreetMap data \u00a9 OpenStreetMap contributors (ODbL).",
+      "version": "live-overpass",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "osm_overpass_lines",
+        "provider_url": "https://overpass-api.de/api/interpreter",
+        "query_kind": "waterways",
+        "cache_hit": true,
+        "bbox_wgs84": [
+          -0.272013362635542,
+          51.45505420211711,
+          -0.11798177747195739,
+          51.549945230718365
+        ],
+        "version": "live-overpass",
+        "exists": true,
+        "filesize_bytes": 172032,
+        "mtime_utc": "2026-02-22T23:03:58.057795+00:00"
+      }
+    },
+    {
+      "name": "worldcover",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\worldcover\\3bac34dc16705f4c5705\\worldcover.tif",
+      "license": "CC BY 4.0",
+      "attribution": "ESA WorldCover \u00a9 ESA and partners (CC BY 4.0).",
+      "version": "live-stac",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "pc_stac_raster",
+        "stac_url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+        "collection": "esa-worldcover",
+        "asset": "map",
+        "item_count": 2,
+        "item_ids": [
+          "ESA_WorldCover_10m_2021_v200_N51W003",
+          "ESA_WorldCover_10m_2020_v100_N51W003"
+        ],
+        "bbox_wgs84": [
+          -0.22160371812321789,
+          51.486516294361095,
+          -0.16839422312202262,
+          51.51848360296031
+        ],
+        "version": "live-stac",
+        "cache_hit": true,
+        "exists": true,
+        "filesize_bytes": 19445,
+        "mtime_utc": "2026-02-22T23:04:00.159175+00:00"
+      }
+    },
+    {
+      "name": "viirs_nightlights",
+      "path": null,
+      "license": "NASA open data terms",
+      "attribution": "NASA/NOAA VIIRS nighttime lights (e.g. Black Marble VNP46A2).",
+      "version": null,
+      "mode": "local_cache",
+      "optional": true,
+      "metadata": {
+        "exists": false
+      }
+    },
+    {
+      "name": "copdem",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\copdem\\7ca59819986f60b75d48\\copdem.tif",
+      "license": "Copernicus terms",
+      "attribution": "Copernicus DEM GLO-30.",
+      "version": "live-stac",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "pc_stac_raster",
+        "stac_url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+        "collection": "cop-dem-glo-30",
+        "asset": "data",
+        "item_count": 1,
+        "item_ids": [
+          "Copernicus_DSM_COG_10_N51_00_W001_00_DEM"
+        ],
+        "bbox_wgs84": [
+          -0.22160371812321789,
+          51.486516294361095,
+          -0.16839422312202262,
+          51.51848360296031
+        ],
+        "version": "live-stac",
+        "cache_hit": true,
+        "exists": true,
+        "filesize_bytes": 73848,
+        "mtime_utc": "2026-02-22T23:04:01.701296+00:00"
+      }
+    },
+    {
+      "name": "ne_phi",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\ne_phi\\c6d2f12df891659b8708\\ne_phi.gpkg",
+      "license": "Open Government Licence / DEFRA terms",
+      "attribution": "Natural England Priority Habitats Inventory.",
+      "version": "live-service",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "arcgis_feature_layer",
+        "service_url": "https://services.arcgis.com/JJzESW51TqeY9uat/arcgis/rest/services/Priority_Habitats_Inventory_England/FeatureServer/0",
+        "cache_hit": true,
+        "bbox_wgs84": [
+          -0.22880501609032017,
+          51.48202172031329,
+          -0.16119235832765622,
+          51.52297813177394
+        ],
+        "version": "live-service",
+        "exists": true,
+        "filesize_bytes": 1097728,
+        "mtime_utc": "2026-02-22T23:04:03.659823+00:00"
+      }
+    },
+    {
+      "name": "ne_awi",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\ne_awi\\5d7197c61ddd7518aacf\\ne_awi.gpkg",
+      "license": "Open Government Licence / DEFRA terms",
+      "attribution": "Natural England Ancient Woodland Inventory.",
+      "version": "live-service",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "arcgis_feature_layer",
+        "service_url": "https://services.arcgis.com/JJzESW51TqeY9uat/arcgis/rest/services/Ancient_Woodland_England/FeatureServer/0",
+        "cache_hit": true,
+        "bbox_wgs84": [
+          -0.9202278661649997,
+          51.05052621465207,
+          0.5300262683753254,
+          51.95443651562427
+        ],
+        "version": "live-service",
+        "exists": true,
+        "filesize_bytes": 56029184,
+        "mtime_utc": "2026-02-22T23:05:28.607024+00:00"
+      }
+    },
+    {
+      "name": "osm_buildings",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\osm_buildings\\f9fc5c54b569749f2f6f\\osm_buildings.gpkg",
+      "license": "ODbL 1.0",
+      "attribution": "Contains OpenStreetMap data \u00a9 OpenStreetMap contributors (ODbL).",
+      "version": "live-overpass",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "osm_overpass_features",
+        "provider_url": "https://overpass-api.de/api/interpreter",
+        "query_kind": "buildings",
+        "cache_hit": true,
+        "bbox_wgs84": [
+          -0.272013362635542,
+          51.45505420211711,
+          -0.11798177747195739,
+          51.549945230718365
+        ],
+        "version": "live-overpass",
+        "exists": true,
+        "filesize_bytes": 16490496,
+        "mtime_utc": "2026-02-23T09:55:56.868427+00:00"
+      }
+    },
+    {
+      "name": "osm_structures_roost",
+      "path": "C:\\Python Scripts\\Bat_Stat_Project_22_02_26\\.hedge_features_cache\\osm_structures_roost\\b41d98cb2c753c7e7eca\\osm_structures_roost.gpkg",
+      "license": "ODbL 1.0",
+      "attribution": "Contains OpenStreetMap data \u00a9 OpenStreetMap contributors (ODbL).",
+      "version": "live-overpass",
+      "mode": "on_demand",
+      "optional": true,
+      "metadata": {
+        "provider": "osm_overpass_features",
+        "provider_url": "https://overpass-api.de/api/interpreter",
+        "query_kind": "structures_roost",
+        "cache_hit": false,
+        "feature_count": 6109,
+        "bbox_wgs84": [
+          -0.272013362635542,
+          51.45505420211711,
+          -0.11798177747195739,
+          51.549945230718365
+        ],
+        "version": "live-overpass",
+        "exists": true,
+        "filesize_bytes": 851968,
+        "mtime_utc": "2026-02-23T09:58:15.781997+00:00"
+      }
+    }
+  ],
+  "notes": [
+    "Deployment nights computed from 'deployment_start'/'deployment_end' using timezone Europe/London.",
+    "Weather nightly features computed with Open-Meteo archive (requests=0, cache_hits=1).",
+    "Moonlight proxy computed from Astral moon geometry and Open-Meteo cloud cover (weather-adjusted proxy, not direct illuminance).",
+    "Dataset 'viirs_nightlights' has no anonymous automatic source in this build (Most convenient public VIIRS rasters require authentication (Earthdata/EOG).).",
+    "Dataset 'viirs_nightlights' unavailable; module 'raster_zonal_stats' will output nulls/flags.",
+    "Raster dataset path not provided; raster stats set to null.",
+    "VIIRS nightlights were unavailable for anonymous auto-download; filled nightlight columns with an open-data proxy derived from WorldCover built-up proportion and road density.",
+    "Roost proxy features computed from open OSM building/structure proxies (not exact roost records).",
+    "mhb_dem_shelter_idx_100m uses a local-relief proxy: 1 / (1 + relief_10_90 / 10), where relief_10_90 is DEM p90-p10 within 100 m.",
+    "Microhabitat proxy features computed (corridor WorldCover + DEM local terrain proxies + reused proximity/context metrics).",
+    "Output geometry QA passed (line types only): ['LineString']",
+    "Dropped 1 derived columns that were all null: roostpx_dist_cave_m"
+  ],
+  "profile": {
+    "name": "bats_v1",
+    "description": "Bats-focused default profile (first-build implementation)",
+    "buffers_m": [
+      25,
+      50,
+      100,
+      250,
+      500,
+      1000
+    ]
+  },
+  "temporal": {
+    "start_column": "deployment_start",
+    "end_column": "deployment_end",
+    "timezone": "Europe/London",
+    "weather_backend": "open_meteo",
+    "min_night_overlap_minutes": 30,
+    "night_window_rule": "sunset_to_sunrise"
+  },
+  "credentials": {
+    "earthdata_token_provided": false,
+    "eog_credentials_provided": false
+  }
+}

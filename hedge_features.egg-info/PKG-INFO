@@ -1,0 +1,73 @@
+Metadata-Version: 2.4
+Name: hedge-features
+Version: 0.1.0
+Summary: File-in file-out GIS enrichment for hedgerow segments
+Author: Codex
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.1
+Requires-Dist: numpy>=1.24
+Requires-Dist: pandas>=2.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: gis
+Requires-Dist: geopandas>=0.14; extra == "gis"
+Requires-Dist: shapely>=2.0; extra == "gis"
+Requires-Dist: pyogrio>=0.7; extra == "gis"
+Requires-Dist: fiona>=1.9; extra == "gis"
+Requires-Dist: rasterio>=1.3; extra == "gis"
+Requires-Dist: networkx>=3.0; extra == "gis"
+Provides-Extra: ui
+Requires-Dist: streamlit>=1.35; extra == "ui"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
+# Hedge Features
+
+`hedge-features` is a file-in, file-out GIS enrichment tool for hedgerow segments. It reads a hedgerow layer, computes ecological and landscape-context features from open data, appends them as new columns, and writes an enriched output dataset plus run metadata.
+
+## Supported Input
+
+- Zipped shapefile package (`.zip`) containing at least `.shp`, `.shx`, `.dbf` (and ideally `.prj`)
+- GeoPackage (`.gpkg`)
+- GeoJSON (`.geojson`, `.json`)
+
+`*.shx` alone is not a valid input. The tool rejects it with a clear error.
+
+## Output
+
+- Primary: GeoPackage (`.gpkg`)
+- Optional: zipped ESRI Shapefile (`.zip`) and CSV attributes (`.csv`)
+- `METADATA.json` is written alongside the output
+
+## Quick Start
+
+```powershell
+pip install -e ".[gis,dev]"
+hedge-features enrich `
+  --input hedges.zip `
+  --output enriched.gpkg `
+  --profile bats_v1 `
+  --dataset os_open_roads=C:\data\os_open_roads.gpkg `
+  --dataset os_open_rivers=C:\data\os_open_rivers.gpkg `
+  --dataset worldcover=C:\data\worldcover_10m.tif `
+  --dataset viirs_nightlights=C:\data\viirs_vnp46a2.tif `
+  --dataset copdem=C:\data\copdem_glo30.tif
+```
+
+## Notes
+
+- Working CRS defaults to `EPSG:27700` (British National Grid) for distance/area calculations.
+- If the input CRS is missing, supply `--input-crs` or the run will fail.
+- England-only datasets (e.g. PHI/AWI) should return nulls outside coverage; profile flags support this.
+- For Shapefile export, long field names are truncated and a field-map JSON is written.
+
+## Project Layout
+
+- `hedge_features/io.py`: input validation, ingestion, export, metadata
+- `hedge_features/pipeline.py`: profile-driven enrichment pipeline
+- `hedge_features/features/`: geometry, vector, raster, network feature calculators
+- `hedge_features/datasets/`: dataset registry and local cache path resolution
+- `hedge_features/cli.py`: command line interface
+- `hedge_features/ui_streamlit.py`: minimal web wrapper (optional)
+- `tests/`: unit and integration tests
