@@ -8,6 +8,7 @@ from typing import Any
 class PlanningSettings:
     detector_budget: int
     optimizer_version: str = "greedy_coverage_v1"
+    optimizer_strategy: str = "greedy"
     candidate_spacing_m: float = 100.0
     endpoint_offset_m: float = 20.0
     min_detector_spacing_m: float = 150.0
@@ -27,6 +28,7 @@ class PlanningSettings:
     objective_weight_high_risk_coverage: float = 0.16
     objective_weight_uncertainty_reduction: float = 0.10
     objective_weight_redundancy_penalty: float = 0.18
+    objective_weight_corridor_coverage: float | None = None
     high_risk_quantile: float = 0.80
     soft_spacing_multiplier: float = 3.0
     reject_overlit_candidates: bool = True

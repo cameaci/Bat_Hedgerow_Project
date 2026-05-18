@@ -13,7 +13,9 @@ class _SelectionState:
 
 
 def select_detector_locations(candidates_gdf, *, settings):
-    import pandas as pd
+    strategy = str(getattr(settings, "optimizer_strategy", "greedy") or "greedy").lower()
+    if strategy not in {"greedy", "greedy_coverage"}:
+        raise ValueError(f"Unsupported optimizer strategy '{strategy}'. Supported: greedy.")
 
     gdf = candidates_gdf.copy()
     _ensure_optimizer_columns(gdf)
@@ -45,6 +47,7 @@ def select_detector_locations(candidates_gdf, *, settings):
                     phase="section_minimum",
                     state=state,
                     metrics=metrics,
+                    settings=settings,
                 )
                 rank += 1
                 needed -= 1
@@ -65,6 +68,7 @@ def select_detector_locations(candidates_gdf, *, settings):
             phase="greedy_coverage",
             state=state,
             metrics=metrics,
+            settings=settings,
         )
         rank += 1
 
@@ -219,9 +223,12 @@ def _marginal_metrics(row, *, settings, state: _SelectionState) -> dict[str, flo
     uncertainty_gain = _uncertainty_reduction_gain(row, state=state)
     redundancy_penalty, nearest_selected_m = _redundancy_penalty(row, settings=settings, state=state)
 
+    route_weight = float(settings.objective_weight_route_coverage)
+    if getattr(settings, "objective_weight_corridor_coverage", None) is not None:
+        route_weight += float(settings.objective_weight_corridor_coverage)
     total_gain = (
         (float(settings.objective_weight_base_score) * base_gain)
-        + (float(settings.objective_weight_route_coverage) * route_gain)
+        + (route_weight * route_gain)
         + (float(settings.objective_weight_habitat_representation) * habitat_gain)
         + (float(settings.objective_weight_high_risk_coverage) * high_risk_gain)
         + (float(settings.objective_weight_uncertainty_reduction) * uncertainty_gain)
@@ -323,7 +330,7 @@ def _redundancy_penalty(row, *, settings, state: _SelectionState) -> tuple[float
     return _clip01(penalty), nearest_selected_m
 
 
-def _apply_selection(gdf, *, idx, rank: int, phase: str, state: _SelectionState, metrics: dict[str, float]) -> None:
+def _apply_selection(gdf, *, idx, rank: int, phase: str, state: _SelectionState, metrics: dict[str, float], settings) -> None:
     route_unit = str(metrics["route_unit"])
     corridor_unit = str(metrics["corridor_unit"])
     guild = str(metrics["guild"])
@@ -332,7 +339,7 @@ def _apply_selection(gdf, *, idx, rank: int, phase: str, state: _SelectionState,
     gdf.at[idx, "selection_rank"] = int(rank)
     gdf.at[idx, "selection_phase"] = phase
     gdf.at[idx, "planning_status"] = "selected"
-    gdf.at[idx, "optimizer_strategy"] = "greedy_coverage_v1"
+    gdf.at[idx, "optimizer_strategy"] = str(getattr(settings, "optimizer_version", "greedy_coverage_v1"))
     gdf.at[idx, "optimizer_marginal_gain"] = float(metrics["total_gain"])
     gdf.at[idx, "optimizer_gain_base_score"] = float(metrics["base_gain"])
     gdf.at[idx, "optimizer_gain_route_coverage"] = float(metrics["route_gain"])

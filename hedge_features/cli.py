@@ -56,6 +56,45 @@ def _parse_key_value_int_entries(entries: tuple[str, ...], *, option_name: str) 
     return out
 
 
+def _parse_key_value_float_entries(entries: tuple[str, ...], *, option_name: str) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for item in entries:
+        if "=" not in item:
+            raise click.BadParameter(f"Invalid {option_name} '{item}'. Expected NAME=FLOAT.")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            raise click.BadParameter(f"Invalid {option_name} '{item}'. NAME and FLOAT are required.")
+        try:
+            out[key] = float(value)
+        except ValueError as exc:
+            raise click.BadParameter(f"Invalid {option_name} '{item}'. FLOAT is required.") from exc
+    return out
+
+
+def _planning_weight_kwargs(entries: tuple[str, ...]) -> dict[str, float]:
+    aliases = {
+        "base_score": "objective_weight_base_score",
+        "habitat_representation": "objective_weight_habitat_representation",
+        "route_coverage": "objective_weight_route_coverage",
+        "corridor_coverage": "objective_weight_corridor_coverage",
+        "high_risk_coverage": "objective_weight_high_risk_coverage",
+        "uncertainty_reduction": "objective_weight_uncertainty_reduction",
+        "redundancy_penalty": "objective_weight_redundancy_penalty",
+    }
+    parsed = _parse_key_value_float_entries(entries, option_name="--objective-weight")
+    out: dict[str, float] = {}
+    for key, value in parsed.items():
+        canonical = aliases.get(key)
+        if canonical is None:
+            raise click.BadParameter(
+                f"Invalid --objective-weight key '{key}'. Supported: {', '.join(sorted(aliases))}."
+            )
+        out[canonical] = value
+    return out
+
+
 def _read_optional_geodata(path: Path | None):
     if path is None:
         return None
@@ -398,6 +437,8 @@ def validate_acoustics_cmd(
 @click.option("--endpoint-offset", default=20.0, show_default=True, type=float)
 @click.option("--min-detector-spacing", default=150.0, show_default=True, type=float)
 @click.option("--evidence-engine/--no-evidence-engine", default=True, show_default=True, help="Compute guild-based ecological evidence scores before planning.")
+@click.option("--optimizer", "optimizer_strategy", default="greedy", show_default=True, type=click.Choice(["greedy"], case_sensitive=False), help="Detector-selection optimizer strategy. Greedy is the deterministic v1 strategy; MILP is planned for a later sprint.")
+@click.option("--objective-weight", "objective_weight_entries", multiple=True, help="Override planner objective weight NAME=FLOAT. Supported names: base_score, route_coverage, corridor_coverage, habitat_representation, high_risk_coverage, uncertainty_reduction, redundancy_penalty.")
 @click.option("--score-column", default=None, help="Optional numeric source column used to override the computed planning priority score.")
 @click.option("--target-scenario", default="all_bats", show_default=True, help="Planner evidence target scenario, e.g. all_bats, edge_commuter, common_pipistrelle, barbastelle.")
 @click.option("--min-score", default=None, type=float, help="Minimum candidate score required for eligibility.")
@@ -420,6 +461,8 @@ def plan_statics(
     endpoint_offset: float,
     min_detector_spacing: float,
     evidence_engine: bool,
+    optimizer_strategy: str,
+    objective_weight_entries: tuple[str, ...],
     score_column: str | None,
     target_scenario: str,
     min_score: float | None,
@@ -440,8 +483,10 @@ def plan_statics(
     exclude_area_gdf = _read_optional_geodata(exclude_area_path)
     source_metadata = _read_input_metadata(input_path)
 
+    objective_weight_kwargs = _planning_weight_kwargs(objective_weight_entries)
     settings = PlanningSettings(
         detector_budget=detector_budget,
+        optimizer_strategy=optimizer_strategy.lower(),
         candidate_spacing_m=candidate_spacing,
         endpoint_offset_m=endpoint_offset,
         min_detector_spacing_m=min_detector_spacing,
@@ -455,6 +500,7 @@ def plan_statics(
         reject_overlit_candidates=reject_overlit_candidates,
         reject_low_confidence_candidates=reject_low_confidence_candidates,
         deterministic_output=deterministic_output,
+        **objective_weight_kwargs,
     )
     result = plan_static_detectors(
         hedges_gdf,

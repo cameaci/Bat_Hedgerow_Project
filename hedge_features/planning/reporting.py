@@ -70,6 +70,20 @@ def build_planning_run_summary(*, candidates_gdf, selected_gdf, settings, eviden
     if "optimizer_strategy" in selected_gdf.columns and len(selected_gdf) > 0:
         summary["optimizer"] = {
             "strategy": str(selected_gdf["optimizer_strategy"].astype("string").dropna().iloc[0]),
+            "strategy_key": str(getattr(settings, "optimizer_strategy", "greedy")),
+            "objective_weights": {
+                "base_score": float(getattr(settings, "objective_weight_base_score", 0.0)),
+                "habitat_representation": float(getattr(settings, "objective_weight_habitat_representation", 0.0)),
+                "route_coverage": float(getattr(settings, "objective_weight_route_coverage", 0.0)),
+                "corridor_coverage": (
+                    None
+                    if getattr(settings, "objective_weight_corridor_coverage", None) is None
+                    else float(getattr(settings, "objective_weight_corridor_coverage"))
+                ),
+                "high_risk_coverage": float(getattr(settings, "objective_weight_high_risk_coverage", 0.0)),
+                "uncertainty_reduction": float(getattr(settings, "objective_weight_uncertainty_reduction", 0.0)),
+                "redundancy_penalty": float(getattr(settings, "objective_weight_redundancy_penalty", 0.0)),
+            },
             "selected_route_units": int(selected_gdf["optimization_route_unit"].astype("string").nunique()),
             "selected_corridors": int(selected_gdf["optimization_corridor_unit"].astype("string").nunique()),
             "selected_high_risk_corridors": int((selected_gdf["optimization_high_risk_flag"].astype(int) == 1).sum()),

@@ -99,3 +99,27 @@ def test_optimizer_selection_is_deterministic_for_same_candidate_set():
     assert selected1["candidate_id"].astype(str).tolist() == selected2["candidate_id"].astype(str).tolist()
     assert scored1["optimization_high_risk_flag"].astype(int).tolist() == scored2["optimization_high_risk_flag"].astype(int).tolist()
     assert selected1["optimizer_marginal_gain"].astype(float).tolist() == selected2["optimizer_marginal_gain"].astype(float).tolist()
+
+
+def test_optimizer_rejects_unsupported_strategy():
+    settings = PlanningSettings(detector_budget=1, optimizer_strategy="milp")
+    with pytest.raises(ValueError, match="Unsupported optimizer strategy"):
+        select_detector_locations(_candidate_gdf(), settings=settings)
+
+
+def test_objective_weight_override_can_change_selection_priority():
+    gdf = _candidate_gdf()
+    settings = PlanningSettings(
+        detector_budget=1,
+        objective_weight_base_score=0.0,
+        objective_weight_route_coverage=0.0,
+        objective_weight_habitat_representation=0.0,
+        objective_weight_high_risk_coverage=1.0,
+        objective_weight_uncertainty_reduction=0.0,
+        objective_weight_redundancy_penalty=0.0,
+        high_risk_quantile=0.5,
+    )
+
+    selected, _ = select_detector_locations(gdf, settings=settings)
+
+    assert selected.iloc[0]["candidate_id"] == "c3"
