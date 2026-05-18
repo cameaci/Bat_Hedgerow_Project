@@ -5,8 +5,9 @@ from pathlib import Path
 
 import click
 
+from .acoustics import AcousticImportSettings, import_acoustic_evidence, read_acoustic_table
 from .deps import require_geopandas
-from .io import prepare_working_gdf, read_input_geodata
+from .io import prepare_working_gdf, read_input_geodata, write_geodata
 from .models import RunOptions
 from .planning import PlanningSettings, plan_static_detectors, write_planning_outputs
 from .pipeline import run_enrichment
@@ -195,6 +196,101 @@ def enrich(
     if result["notes"]:
         click.echo("Notes:")
         for note in result["notes"]:
+            click.echo(f"- {note}")
+
+
+@main.command("import-acoustics")
+@click.option("--hedges", "hedges_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Hedgerow geospatial dataset to annotate with acoustic evidence.")
+@click.option("--detections", "detections_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Acoustic detections table (.csv or .xlsx).")
+@click.option("--output", "output_path", required=True, type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--format", "source_format", default="generic", show_default=True, type=click.Choice(["generic", "batdetect2"], case_sensitive=False), help="Detection output format adapter.")
+@click.option("--hedge-id-col", default="hf_uid", show_default=True, help="Hedgerow id column in the geospatial input.")
+@click.option("--detection-hedge-id-col", default=None, help="Detection table column that directly references hedgerow ids. If omitted, latitude/longitude spatial matching is used.")
+@click.option("--lat-col", default=None, help="Detection latitude column for spatial matching. Auto-detected when omitted.")
+@click.option("--lon-col", default=None, help="Detection longitude column for spatial matching. Auto-detected when omitted.")
+@click.option("--detections-crs", default="EPSG:4326", show_default=True, help="CRS for detection coordinates.")
+@click.option("--max-distance-m", default=50.0, show_default=True, type=float, help="Maximum point-to-hedgerow match distance for spatial linking.")
+@click.option("--datetime-col", default=None, help="Detection datetime/timestamp column. Auto-detected when omitted.")
+@click.option("--species-col", default=None, help="Species/class column. Auto-detected when omitted.")
+@click.option("--guild-col", default=None, help="Species guild/group column. Auto-detected when omitted.")
+@click.option("--confidence-col", default=None, help="Confidence/probability column. Auto-detected when omitted.")
+@click.option("--activity-col", default=None, help="Activity/call-count column. Auto-detected when omitted; each row counts as 1.")
+@click.option("--min-confidence", default=None, type=float, help="Drop detections below this confidence before aggregation.")
+@click.option("--working-crs", default="EPSG:27700", show_default=True)
+@click.option("--input-crs", default=None, help="Required if hedgerow input has no CRS metadata.")
+@click.option("--export-crs", default=None, help="CRS for output geometry, or omit to keep working CRS.")
+@click.option("--write-csv/--no-write-csv", default=False, show_default=True)
+@click.option("--json-summary/--no-json-summary", default=False, show_default=True)
+def import_acoustics_cmd(
+    hedges_path: Path,
+    detections_path: Path,
+    output_path: Path,
+    source_format: str,
+    hedge_id_col: str,
+    detection_hedge_id_col: str | None,
+    lat_col: str | None,
+    lon_col: str | None,
+    detections_crs: str,
+    max_distance_m: float,
+    datetime_col: str | None,
+    species_col: str | None,
+    guild_col: str | None,
+    confidence_col: str | None,
+    activity_col: str | None,
+    min_confidence: float | None,
+    working_crs: str,
+    input_crs: str | None,
+    export_crs: str | None,
+    write_csv: bool,
+    json_summary: bool,
+):
+    """Attach aggregated acoustic bat detections to hedgerow segments."""
+    raw_gdf, read_notes = read_input_geodata(hedges_path, input_crs=input_crs)
+    hedges_gdf, _, repaired_count = prepare_working_gdf(raw_gdf, working_crs=working_crs, id_column=hedge_id_col)
+    detections_df = read_acoustic_table(detections_path)
+    settings = AcousticImportSettings(
+        source_format=source_format.lower(),
+        hedge_id_column=hedge_id_col,
+        detection_hedge_id_column=detection_hedge_id_col,
+        latitude_column=lat_col,
+        longitude_column=lon_col,
+        detections_crs=detections_crs,
+        max_distance_m=max_distance_m,
+        datetime_column=datetime_col,
+        species_column=species_col,
+        guild_column=guild_col,
+        confidence_column=confidence_col,
+        activity_column=activity_col,
+        min_confidence=min_confidence,
+    )
+    out_gdf, summary = import_acoustic_evidence(hedges_gdf, detections_df, settings=settings)
+    notes = list(read_notes)
+    if repaired_count:
+        notes.append(f"Repaired {repaired_count} invalid geometries.")
+    notes.extend(summary.get("notes", []))
+    metadata = {
+        "tool": "hedge-features",
+        "command": "import-acoustics",
+        "source_hedges": str(hedges_path),
+        "source_detections": str(detections_path),
+        "summary": summary,
+        "notes": notes,
+    }
+    written = write_geodata(out_gdf, output_path, metadata=metadata, export_crs=export_crs, write_csv=write_csv)
+    payload = dict(summary)
+    payload["written"] = written
+    payload["notes"] = notes
+    if json_summary:
+        click.echo(json.dumps(payload, indent=2))
+        return
+    click.echo(f"Detections: {summary['records_after_confidence_filter']} after filtering")
+    click.echo(f"Matched detections: {summary['matched_detection_records']}")
+    click.echo(f"Hedgerows with acoustic evidence: {summary['hedgerows_with_acoustic_evidence']}")
+    for key, value in written.items():
+        click.echo(f"{key}: {value}")
+    if notes:
+        click.echo("Notes:")
+        for note in notes:
             click.echo(f"- {note}")
 
 

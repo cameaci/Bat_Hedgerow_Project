@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Hedge Features
 
 `hedge-features` is a file-in, file-out GIS enrichment tool for hedgerow segments. It reads a hedgerow layer, computes ecological and landscape-context features from open data, appends them as new columns, and writes an enriched output dataset plus run metadata.
@@ -8,6 +7,10 @@ It also includes a Streamlit-based **GIS-only bat survey screening / prioritisat
 It also includes a **static detector planner** in both CLI and Streamlit UI form. The planner can generate candidate detector points from enriched hedgerows, compute guild-based ecological evidence scores, apply inclusion/exclusion/access constraints, select a deterministic detector set, support expert review with audit-trailed manual overrides, and write a bankability-oriented evidence pack.
 
 It also now includes a **species / calibration layer** for framework-specific bat targets. This layer does not ship with bundled calibrated species models by default, but it can train, validate, and package versioned species artefacts from historical static survey data when those labels are available.
+
+It now includes an **acoustic evidence import** workflow for linking bat detector outputs back to hedgerow segments. Acoustic tables can be joined directly by hedgerow id or spatially matched from detector latitude/longitude, then summarised into segment-level evidence columns for validation, calibration, and planning review.
+
+The bankable profile also computes lightweight **landscape ecology metrics** from categorical land-cover rasters, including class edge density, largest patch index, and core-area proportion for selected bat-relevant classes such as trees, water, and wetlands.
 
 By default, the app now attempts to auto-fetch open datasets for the input AOI (OSM/ArcGIS/Planetary Computer-backed sources) when local dataset paths are not supplied.
 
@@ -105,6 +108,23 @@ hedge-features train-species-model `
   --json-summary
 ```
 
+Importing acoustic evidence and appending segment-level summaries:
+
+```powershell
+hedge-features import-acoustics `
+  --hedges enriched.gpkg `
+  --detections batdetect2_results.csv `
+  --output enriched_with_acoustics.gpkg `
+  --format batdetect2 `
+  --lat-col latitude `
+  --lon-col longitude `
+  --max-distance-m 50 `
+  --min-confidence 0.5 `
+  --json-summary
+```
+
+If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, and mean match distance.
+
 ## Streamlit UI
 
 Run the app:
@@ -146,9 +166,10 @@ Screening UI modes:
 - `hedge_features/screening/`: reusable GIS-only screening engine (framework loading, column governance, confidence, I/O)
 - `hedge_features/planning/`: static detector planning engine (candidate generation, ecological evidence scoring, constraints, optimisation, reporting)
 - `hedge_features/species/`: species-model training, artefact writing, runtime inference, and domain-of-applicability logic
+- `hedge_features/acoustics/`: acoustic detection table import, adapter normalisation, hedgerow linking, and segment-level aggregation
 - `hedge_features/ui_planner.py`: Streamlit planner workflow (setup, map review, override audit trail, exports)
 - `hedge_features/frameworks/bats_screening_v1/`: bundled versioned screening artefacts (manifest, registry, thresholds, confidence rules, model spec)
-- `hedge_features/features/`: geometry, vector, raster, network feature calculators
+- `hedge_features/features/`: geometry, vector, raster, network feature calculators, including categorical land-cover proportions and lightweight landscape metrics
 - `hedge_features/datasets/`: dataset registry and local cache path resolution
 - `hedge_features/cli.py`: command line interface
 - `hedge_features/ui_streamlit.py`: Streamlit UI for enrichment + GIS-only screening
