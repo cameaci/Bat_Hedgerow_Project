@@ -37,7 +37,7 @@ def import_acoustic_evidence(hedges_gdf, detections_df, *, settings: AcousticImp
 
     if settings.hedge_id_column not in hedges_gdf.columns:
         raise ValueError(f"Hedge id column '{settings.hedge_id_column}' was not found in hedgerow input.")
-    if hedges_gdf.crs is None:
+    if not settings.detection_hedge_id_column and getattr(hedges_gdf, "crs", None) is None:
         raise ValueError("Hedgerow input must have a CRS before acoustic spatial matching.")
 
     detections, column_audit = _normalise_detection_columns(detections_df.copy(), settings=settings)
@@ -168,10 +168,13 @@ def _link_by_nearest_geometry(hedges_gdf, detections, *, settings: AcousticImpor
     records = detections.loc[valid].copy()
     points = [Point(float(x), float(y)) for x, y in zip(lon.loc[valid], lat.loc[valid])]
     points_gdf = gpd.GeoDataFrame(records, geometry=points, crs=settings.detections_crs)
-    if str(points_gdf.crs) != str(hedges_gdf.crs):
-        points_gdf = points_gdf.to_crs(hedges_gdf.crs)
-
     hedges_for_join = hedges_gdf[[settings.hedge_id_column, hedges_gdf.geometry.name]].copy()
+    match_crs = _metric_matching_crs(hedges_for_join, points_gdf)
+    if str(points_gdf.crs) != str(match_crs):
+        points_gdf = points_gdf.to_crs(match_crs)
+    if str(hedges_for_join.crs) != str(match_crs):
+        hedges_for_join = hedges_for_join.to_crs(match_crs)
+
     max_distance = None if settings.max_distance_m is None else float(settings.max_distance_m)
     joined = gpd.sjoin_nearest(
         points_gdf,
@@ -194,6 +197,20 @@ def _link_by_nearest_geometry(hedges_gdf, detections, *, settings: AcousticImpor
         "invalid_coordinates": invalid_location_count,
         "unmatched_spatial": unmatched_spatial_count,
     }
+
+def _metric_matching_crs(hedges_gdf, points_gdf):
+    """Return a projected CRS for nearest matching so distances are measured in metres."""
+    hedge_crs = getattr(hedges_gdf, "crs", None)
+    if hedge_crs is not None and not bool(getattr(hedge_crs, "is_geographic", False)):
+        return hedge_crs
+    for source in (hedges_gdf, points_gdf):
+        try:
+            estimated = source.to_crs("EPSG:4326").estimate_utm_crs()
+        except Exception:
+            estimated = None
+        if estimated is not None:
+            return estimated
+    return "EPSG:3857"
 
 
 def _aggregate_linked_detections(linked, *, hedge_id_column: str, settings: AcousticImportSettings):

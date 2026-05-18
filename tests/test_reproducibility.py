@@ -84,3 +84,51 @@ def test_run_metadata_build_is_stable_in_deterministic_mode(tmp_path: Path):
     assert m1.run_id == m2.run_id
     assert m1.run_timestamp_utc is None
     assert m2.run_timestamp_utc is None
+
+
+def test_dataset_snapshot_manifest_records_checksum_and_metadata(tmp_path: Path):
+    import hashlib
+    import json
+
+    from hedge_features.datasets.auto_fetch import AutoDataFetcher
+
+    fetcher = AutoDataFetcher.__new__(AutoDataFetcher)
+    fetcher.profile_datasets = {
+        "roads": {
+            "license": "ODbL 1.0",
+            "attribution": "Contains OpenStreetMap data",
+        }
+    }
+    data_path = tmp_path / "roads.gpkg"
+    data_path.write_bytes(b"snapshot contents")
+    meta = {
+        "provider": "osm_overpass_lines",
+        "provider_url": "https://example.test/overpass",
+        "bbox_wgs84": [-1.0, 51.0, -0.5, 51.5],
+        "version": "live-overpass",
+        "cache_hit": False,
+    }
+
+    returned = fetcher._write_snapshot_manifest(
+        "roads",
+        "osm_overpass_lines",
+        data_path,
+        meta,
+        bbox_wgs84=(-1.0, 51.0, -0.5, 51.5),
+    )
+
+    manifest_path = tmp_path / "SNAPSHOT.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_sha = hashlib.sha256(b"snapshot contents").hexdigest()
+    assert manifest["manifest_version"] == "dataset_snapshot_v1"
+    assert manifest["dataset_name"] == "roads"
+    assert manifest["provider_type"] == "osm_overpass_lines"
+    assert manifest["provider_metadata"] == meta
+    assert manifest["sha256"] == expected_sha
+    assert returned["snapshot_manifest_path"] == str(manifest_path)
+    assert returned["snapshot_checksum_sha256"] == expected_sha
+
+    cached = fetcher._cached_dataset_metadata(data_path, {"provider": "fallback"})
+    assert cached["provider"] == "osm_overpass_lines"
+    assert cached["cache_hit"] is True
+    assert cached["snapshot_manifest_path"] == str(manifest_path)

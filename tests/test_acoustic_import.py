@@ -230,3 +230,47 @@ def test_import_acoustic_evidence_reports_invalid_spatial_rows():
     assert summary["matched_detection_records"] == 1
     assert summary["drop_reason_counts"]["invalid_coordinates"] == 1
     assert summary["drop_reason_counts"]["unmatched_spatial"] == 1
+
+
+def test_import_acoustic_evidence_id_link_does_not_require_crs():
+    hedges = HedgeFrame({"hf_uid": ["h1"]})
+    hedges.crs = None
+    detections = pd.DataFrame({"hedge_id": ["h1"], "species": ["Pipistrellus"]})
+
+    out, summary = import_acoustic_evidence(
+        hedges,
+        detections,
+        settings=AcousticImportSettings(detection_hedge_id_column="hedge_id"),
+    )
+
+    assert out.loc[0, "acoustic_detection_count"] == 1
+    assert summary["matched_detection_records"] == 1
+
+
+def test_import_acoustic_evidence_spatial_matching_uses_metric_distance_for_geographic_crs():
+    gpd = pytest.importorskip("geopandas")
+    pytest.importorskip("shapely")
+    from shapely.geometry import LineString
+
+    hedges = gpd.GeoDataFrame(
+        {"hf_uid": ["h1"]},
+        geometry=[LineString([(-1.0, 51.0), (-0.999, 51.0)])],
+        crs="EPSG:4326",
+    )
+    detections = pd.DataFrame(
+        {
+            "latitude": [51.00005, 51.01],
+            "longitude": [-0.9995, -0.9995],
+            "species": ["Pipistrellus", "Noctule"],
+        }
+    )
+
+    out, summary = import_acoustic_evidence(
+        hedges,
+        detections,
+        settings=AcousticImportSettings(max_distance_m=30.0),
+    )
+
+    assert out.loc[0, "acoustic_detection_count"] == 1
+    assert out.loc[0, "acoustic_species_list"] == "Pipistrellus"
+    assert summary["drop_reason_counts"]["unmatched_spatial"] == 1
