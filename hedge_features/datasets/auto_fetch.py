@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import hashlib
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +166,69 @@ class AutoDataFetcher:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def _snapshot_path_for(self, data_path: Path) -> Path:
+        return data_path.parent / "SNAPSHOT.json"
+
+    def _read_snapshot_manifest(self, data_path: Path) -> dict[str, Any]:
+        manifest_path = self._snapshot_path_for(data_path)
+        if not manifest_path.exists():
+            return {}
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        if isinstance(payload, dict):
+            payload["snapshot_manifest_path"] = str(manifest_path)
+            return payload
+        return {}
+
+    def _cached_dataset_metadata(self, data_path: Path, fallback: dict[str, Any]) -> dict[str, Any]:
+        snapshot = self._read_snapshot_manifest(data_path)
+        provider_meta = snapshot.get("provider_metadata")
+        meta = dict(provider_meta) if isinstance(provider_meta, dict) else dict(fallback)
+        meta.update(snapshot)
+        meta["cache_hit"] = True
+        return meta
+
+    def _write_snapshot_manifest(
+        self,
+        dataset_name: str,
+        provider_type: str,
+        data_path: Path,
+        meta: dict[str, Any],
+        *,
+        bbox_wgs84: tuple[float, float, float, float] | None = None,
+    ) -> dict[str, Any]:
+        manifest_path = self._snapshot_path_for(data_path)
+        cfg = self.profile_datasets.get(dataset_name, {}) or {}
+        file_info = _file_info(data_path)
+        payload = {
+            "manifest_version": "dataset_snapshot_v1",
+            "dataset_name": dataset_name,
+            "provider_type": provider_type,
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "data_path": str(data_path),
+            "cache_dir": str(data_path.parent),
+            "bbox_wgs84": (
+                list(bbox_wgs84) if bbox_wgs84 is not None else meta.get("bbox_wgs84")
+            ),
+            "license": cfg.get("license"),
+            "attribution": cfg.get("attribution"),
+            "provider_metadata": dict(meta),
+            **file_info,
+        }
+        manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        out = dict(meta)
+        out.update(
+            {
+                "snapshot_manifest_path": str(manifest_path),
+                "snapshot_manifest_version": payload["manifest_version"],
+                "snapshot_checksum_sha256": payload.get("sha256"),
+                "snapshot_filesize_bytes": payload.get("filesize_bytes"),
+            }
+        )
+        return out
+
     def _fetch_osm_lines(self, dataset_name: str, provider: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
         gpd = require_geopandas()
         try:
@@ -179,14 +244,16 @@ class AutoDataFetcher:
         cache_dir = self._cache_subdir(dataset_name, "osm_overpass_lines", query_kind, bbox_wgs84)
         out_path = cache_dir / f"{dataset_name}.gpkg"
         if out_path.exists():
-            return out_path, {
-                "provider": "osm_overpass_lines",
-                "provider_url": overpass_urls[0] if isinstance(overpass_urls, list) else overpass_urls,
-                "query_kind": query_kind,
-                "cache_hit": True,
-                "bbox_wgs84": list(bbox_wgs84),
-                "version": "live-overpass",
-            }
+            return out_path, self._cached_dataset_metadata(
+                out_path,
+                {
+                    "provider": "osm_overpass_lines",
+                    "provider_url": overpass_urls[0] if isinstance(overpass_urls, list) else overpass_urls,
+                    "query_kind": query_kind,
+                    "bbox_wgs84": list(bbox_wgs84),
+                    "version": "live-overpass",
+                },
+            )
         if not self.allow_live_fetch:
             raise RuntimeError(
                 f"Frozen datasets mode is enabled and no cached snapshot exists for '{dataset_name}'."
@@ -225,7 +292,7 @@ class AutoDataFetcher:
             )
         out_gdf = out_gdf.to_crs(self.working_crs)
         out_gdf.to_file(out_path, driver="GPKG")
-        return out_path, {
+        meta = {
             "provider": "osm_overpass_lines",
             "provider_url": used_overpass_url,
             "query_kind": query_kind,
@@ -234,6 +301,9 @@ class AutoDataFetcher:
             "bbox_wgs84": list(bbox_wgs84),
             "version": "live-overpass",
         }
+        return out_path, self._write_snapshot_manifest(
+            dataset_name, "osm_overpass_lines", out_path, meta, bbox_wgs84=bbox_wgs84
+        )
 
     def _fetch_osm_features(self, dataset_name: str, provider: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
         gpd = require_geopandas()
@@ -250,14 +320,16 @@ class AutoDataFetcher:
         cache_dir = self._cache_subdir(dataset_name, "osm_overpass_features", query_kind, bbox_wgs84)
         out_path = cache_dir / f"{dataset_name}.gpkg"
         if out_path.exists():
-            return out_path, {
-                "provider": "osm_overpass_features",
-                "provider_url": overpass_urls[0] if isinstance(overpass_urls, list) else overpass_urls,
-                "query_kind": query_kind,
-                "cache_hit": True,
-                "bbox_wgs84": list(bbox_wgs84),
-                "version": "live-overpass",
-            }
+            return out_path, self._cached_dataset_metadata(
+                out_path,
+                {
+                    "provider": "osm_overpass_features",
+                    "provider_url": overpass_urls[0] if isinstance(overpass_urls, list) else overpass_urls,
+                    "query_kind": query_kind,
+                    "bbox_wgs84": list(bbox_wgs84),
+                    "version": "live-overpass",
+                },
+            )
         if not self.allow_live_fetch:
             raise RuntimeError(
                 f"Frozen datasets mode is enabled and no cached snapshot exists for '{dataset_name}'."
@@ -316,7 +388,7 @@ class AutoDataFetcher:
             )
         out_gdf = out_gdf.to_crs(self.working_crs)
         out_gdf.to_file(out_path, driver="GPKG")
-        return out_path, {
+        meta = {
             "provider": "osm_overpass_features",
             "provider_url": used_overpass_url,
             "query_kind": query_kind,
@@ -325,6 +397,9 @@ class AutoDataFetcher:
             "bbox_wgs84": list(bbox_wgs84),
             "version": "live-overpass",
         }
+        return out_path, self._write_snapshot_manifest(
+            dataset_name, "osm_overpass_features", out_path, meta, bbox_wgs84=bbox_wgs84
+        )
 
     def _build_overpass_ql(
         self,
@@ -408,13 +483,15 @@ class AutoDataFetcher:
         cache_dir = self._cache_subdir(dataset_name, "arcgis_feature_layer", service_url, bbox_wgs84)
         out_path = cache_dir / f"{dataset_name}.gpkg"
         if out_path.exists():
-            return out_path, {
-                "provider": "arcgis_feature_layer",
-                "service_url": service_url,
-                "cache_hit": True,
-                "bbox_wgs84": list(bbox_wgs84),
-                "version": "live-service",
-            }
+            return out_path, self._cached_dataset_metadata(
+                out_path,
+                {
+                    "provider": "arcgis_feature_layer",
+                    "service_url": service_url,
+                    "bbox_wgs84": list(bbox_wgs84),
+                    "version": "live-service",
+                },
+            )
         if not self.allow_live_fetch:
             raise RuntimeError(
                 f"Frozen datasets mode is enabled and no cached snapshot exists for '{dataset_name}'."
@@ -452,7 +529,7 @@ class AutoDataFetcher:
             out_gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries([], crs="EPSG:4326"), crs="EPSG:4326")
         out_gdf = out_gdf.to_crs(self.working_crs)
         out_gdf.to_file(out_path, driver="GPKG")
-        return out_path, {
+        meta = {
             "provider": "arcgis_feature_layer",
             "service_url": service_url,
             "cache_hit": False,
@@ -460,6 +537,9 @@ class AutoDataFetcher:
             "bbox_wgs84": list(bbox_wgs84),
             "version": "live-service",
         }
+        return out_path, self._write_snapshot_manifest(
+            dataset_name, "arcgis_feature_layer", out_path, meta, bbox_wgs84=bbox_wgs84
+        )
 
     def _fetch_pc_stac_raster(self, dataset_name: str, provider: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
         rasterio = require_rasterio()
@@ -471,23 +551,17 @@ class AutoDataFetcher:
         bbox_wgs84 = self._provider_bbox_wgs84(provider)
         cache_dir = self._cache_subdir(dataset_name, "pc_stac_raster", f"{collection}|{asset_key}", bbox_wgs84)
         out_path = cache_dir / f"{dataset_name}.tif"
-        manifest_path = cache_dir / "manifest.json"
         if out_path.exists():
-            meta = {}
-            if manifest_path.exists():
-                try:
-                    meta = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except Exception:
-                    meta = {}
-            meta.update({"cache_hit": True})
-            return out_path, meta or {
-                "provider": "pc_stac_raster",
-                "collection": collection,
-                "asset": asset_key,
-                "bbox_wgs84": list(bbox_wgs84),
-                "version": "live-stac",
-                "cache_hit": True,
-            }
+            return out_path, self._cached_dataset_metadata(
+                out_path,
+                {
+                    "provider": "pc_stac_raster",
+                    "collection": collection,
+                    "asset": asset_key,
+                    "bbox_wgs84": list(bbox_wgs84),
+                    "version": "live-stac",
+                },
+            )
         if not self.allow_live_fetch:
             raise RuntimeError(
                 f"Frozen datasets mode is enabled and no cached snapshot exists for '{dataset_name}'."
@@ -521,8 +595,9 @@ class AutoDataFetcher:
             "version": "live-stac",
             "cache_hit": False,
         }
-        manifest_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        return out_path, meta
+        return out_path, self._write_snapshot_manifest(
+            dataset_name, "pc_stac_raster", out_path, meta, bbox_wgs84=bbox_wgs84
+        )
 
     def _pc_stac_search(self, *, collection: str, bbox: tuple[float, float, float, float], limit: int) -> list[dict[str, Any]]:
         body = json.dumps({"collections": [collection], "bbox": list(bbox), "limit": int(limit)}).encode("utf-8")
@@ -584,6 +659,19 @@ class AutoDataFetcher:
                     src.close()
                 except Exception:
                     pass
+
+
+def _file_info(path: Path) -> dict[str, Any]:
+    stat = path.stat()
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return {
+        "filesize_bytes": int(stat.st_size),
+        "mtime_utc": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        "sha256": h.hexdigest(),
+    }
 
 
 def provider_pattern_from_list(values: list[str]) -> str:

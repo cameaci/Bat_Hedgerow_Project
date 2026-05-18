@@ -99,3 +99,70 @@ def test_optimizer_selection_is_deterministic_for_same_candidate_set():
     assert selected1["candidate_id"].astype(str).tolist() == selected2["candidate_id"].astype(str).tolist()
     assert scored1["optimization_high_risk_flag"].astype(int).tolist() == scored2["optimization_high_risk_flag"].astype(int).tolist()
     assert selected1["optimizer_marginal_gain"].astype(float).tolist() == selected2["optimizer_marginal_gain"].astype(float).tolist()
+
+
+def test_optimizer_rejects_unsupported_strategy():
+    settings = PlanningSettings(detector_budget=1, optimizer_strategy="bogus")
+    with pytest.raises(ValueError, match="Unsupported optimizer strategy"):
+        select_detector_locations(_candidate_gdf(), settings=settings)
+
+
+def test_objective_weight_override_can_change_selection_priority():
+    gdf = _candidate_gdf()
+    settings = PlanningSettings(
+        detector_budget=1,
+        objective_weight_base_score=0.0,
+        objective_weight_route_coverage=0.0,
+        objective_weight_habitat_representation=0.0,
+        objective_weight_high_risk_coverage=1.0,
+        objective_weight_uncertainty_reduction=0.0,
+        objective_weight_redundancy_penalty=0.0,
+        high_risk_quantile=0.5,
+    )
+
+    selected, _ = select_detector_locations(gdf, settings=settings)
+
+    assert selected.iloc[0]["candidate_id"] == "c3"
+
+
+def _exact_candidate_gdf():
+    return gpd.GeoDataFrame(
+        {
+            "candidate_id": ["c1", "c2", "c3", "c4"],
+            "source_hf_uid": ["h1", "h2", "h3", "h4"],
+            "section_name": ["A", "B", "C", "D"],
+            "candidate_chainage_m": [20.0, 20.0, 20.0, 20.0],
+            "source_length_m": [100.0, 100.0, 100.0, 100.0],
+            "candidate_score": [0.900, 0.897, 0.897, 0.890],
+            "eligible_for_selection": [1, 1, 1, 1],
+            "eco_primary_guild": ["edge_open", "edge_open", "edge_open", "edge_open"],
+            "planning_priority_score": [0.900, 0.897, 0.897, 0.890],
+            "evidence_confidence_score": [0.90, 0.90, 0.90, 0.90],
+            "selected_flag": [0, 0, 0, 0],
+            "planning_status": ["candidate", "candidate", "candidate", "candidate"],
+        },
+        geometry=[Point(100, 0), Point(0, 0), Point(200, 0), Point(500, 0)],
+        crs="EPSG:27700",
+    )
+
+
+def test_exact_optimizer_finds_better_pair_than_top_single_conflict():
+    settings = PlanningSettings(
+        detector_budget=2,
+        optimizer_strategy="exact",
+        min_detector_spacing_m=150.0,
+        objective_weight_base_score=1.0,
+        objective_weight_route_coverage=0.0,
+        objective_weight_habitat_representation=0.0,
+        objective_weight_high_risk_coverage=0.0,
+        objective_weight_uncertainty_reduction=0.0,
+        objective_weight_redundancy_penalty=0.0,
+        use_evidence_engine=False,
+        score_column="candidate_score",
+    )
+
+    selected, scored = select_detector_locations(_exact_candidate_gdf(), settings=settings)
+
+    assert selected["candidate_id"].astype(str).tolist() == ["c2", "c3"]
+    assert selected["optimizer_strategy"].astype(str).unique().tolist() == ["exact_integer_v1"]
+    assert scored.loc[scored["candidate_id"] == "c1", "planning_status"].iloc[0] == "eligible_unselected"

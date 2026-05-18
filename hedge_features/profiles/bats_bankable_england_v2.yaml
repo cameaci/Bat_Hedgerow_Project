@@ -218,6 +218,12 @@ feature_modules:
       moss_lichen: [100]
     column_template: "buf{radius}_worldcover_{class_name}_pct"
     patch_richness_column_template: "buf{radius}_worldcover_patch_richness"
+    landscape_class_names: [tree, water, wetland]
+    landscape_metrics: [edge_density_m_per_ha, largest_patch_index, core_area_pct]
+    landscape_column_templates:
+      edge_density_m_per_ha: "buf{radius}_worldcover_{class_name}_edge_density_m_per_ha"
+      largest_patch_index: "buf{radius}_worldcover_{class_name}_largest_patch_index"
+      core_area_pct: "buf{radius}_worldcover_{class_name}_core_area_pct"
   - type: raster_zonal_stats
     enabled: true
     dataset: viirs_nightlights

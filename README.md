@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Hedge Features
 
 `hedge-features` is a file-in, file-out GIS enrichment tool for hedgerow segments. It reads a hedgerow layer, computes ecological and landscape-context features from open data, appends them as new columns, and writes an enriched output dataset plus run metadata.
@@ -8,6 +7,10 @@ It also includes a Streamlit-based **GIS-only bat survey screening / prioritisat
 It also includes a **static detector planner** in both CLI and Streamlit UI form. The planner can generate candidate detector points from enriched hedgerows, compute guild-based ecological evidence scores, apply inclusion/exclusion/access constraints, select a deterministic detector set, support expert review with audit-trailed manual overrides, and write a bankability-oriented evidence pack.
 
 It also now includes a **species / calibration layer** for framework-specific bat targets. This layer does not ship with bundled calibrated species models by default, but it can train, validate, and package versioned species artefacts from historical static survey data when those labels are available.
+
+It now includes an **acoustic evidence import** workflow for linking bat detector outputs back to hedgerow segments. Acoustic tables can be joined directly by hedgerow id or spatially matched from detector latitude/longitude, then summarised into segment-level evidence columns for validation, calibration, and planning review.
+
+The bankable profile also computes lightweight **landscape ecology metrics** from categorical land-cover rasters, including class edge density, largest patch index, and core-area proportion for selected bat-relevant classes such as trees, water, and wetlands.
 
 By default, the app now attempts to auto-fetch open datasets for the input AOI (OSM/ArcGIS/Planetary Computer-backed sources) when local dataset paths are not supplied.
 
@@ -85,6 +88,19 @@ hedge-features plan-statics `
   --json-summary
 ```
 
+Planner optimisation can be tuned with deterministic greedy selection or the small-candidate exact strategy:
+
+```powershell
+hedge-features plan-statics `
+  --input enriched.gpkg `
+  --output static_plan.gpkg `
+  --detector-budget 12 `
+  --optimizer exact `
+  --objective-weight base_score=0.45 `
+  --objective-weight high_risk_coverage=0.25 `
+  --objective-weight redundancy_penalty=0.20
+```
+
 The planner now writes an evidence pack alongside the requested screened output path:
 
 - screened hedgerow GPKG
@@ -104,6 +120,36 @@ hedge-features train-species-model `
   --geography-column project_package `
   --json-summary
 ```
+
+Importing acoustic evidence and appending segment-level summaries:
+
+```powershell
+hedge-features import-acoustics `
+  --hedges enriched.gpkg `
+  --detections batdetect2_results.csv `
+  --output enriched_with_acoustics.gpkg `
+  --format batdetect2 `
+  --lat-col latitude `
+  --lon-col longitude `
+  --max-distance-m 50 `
+  --min-confidence 0.5 `
+  --json-summary
+```
+
+If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, mean match distance, acoustic-night counts, detections-per-night summaries, and an import audit in the JSON/metadata payload covering column mappings and dropped-record reasons. Use `--acoustic-timezone` and `--night-rollover-hour` to control acoustic-night assignment.
+
+Validating GIS screening scores against acoustic evidence:
+
+```powershell
+hedge-features validate-acoustics `
+  --input enriched_with_acoustics.csv `
+  --score-column survey_priority_score `
+  --output-json acoustic_validation.json `
+  --output-csv acoustic_validation_rows.csv `
+  --json-summary
+```
+
+The validation summary flags high-scoring segments without acoustic evidence, low-scoring segments with acoustic evidence, score-band/evidence cross-tabs, and species/guild counts by score band.
 
 ## Streamlit UI
 
@@ -135,7 +181,7 @@ Screening UI modes:
 - The screening score (`survey_priority_score`) is a prioritisation/ranking score, not a calibrated bat occurrence probability unless a calibrated framework artefact is explicitly packaged and enabled.
 - Planning uses a transparent guild-based evidence engine (`edge_open`, `clutter_linear`, `woodland_sensitive`) and writes `eco_suitability_score`, `survey_utility_score`, `planning_priority_score`, `evidence_confidence_level`, and `evidence_reason_codes`.
 - The planner ignores `mhb_roost_proxy_score` in evidence scoring to avoid double-counting the same roost signal already represented by `roostpx_struct_proxy_score`.
-- Detector selection now uses a deterministic greedy coverage optimizer rather than simple top-K score ranking. The optimizer balances habitat representation, route coverage, high-risk corridor coverage, uncertainty reduction, and redundancy minimisation.
+- Detector selection now uses a deterministic greedy coverage optimizer by default rather than simple top-K score ranking. A small-candidate exact strategy is also available for exhaustive integer search. Both strategies balance habitat representation, route/corridor coverage, high-risk corridor coverage, uncertainty reduction, and redundancy minimisation; CLI objective-weight overrides can tune those trade-offs per run.
 - The Streamlit planner adds a map-first review workflow with `Project Setup`, `Candidate Map`, `Optimisation`, `Expert Review`, and `Exports` surfaces, plus a review audit trail and reviewed GeoPackage export layers (`source_hedges`, `candidates`, `selected_auto`, `selected_final`).
 - The planner evidence pack is intended for defensible review: the candidate and screened exports now carry explicit `why selected`, `why not selected`, missing-data summaries, confidence summaries, dataset provenance, and framework version metadata.
 
@@ -146,9 +192,10 @@ Screening UI modes:
 - `hedge_features/screening/`: reusable GIS-only screening engine (framework loading, column governance, confidence, I/O)
 - `hedge_features/planning/`: static detector planning engine (candidate generation, ecological evidence scoring, constraints, optimisation, reporting)
 - `hedge_features/species/`: species-model training, artefact writing, runtime inference, and domain-of-applicability logic
+- `hedge_features/acoustics/`: acoustic detection table import, adapter normalisation, hedgerow linking, segment-level aggregation, and GIS-score validation summaries
 - `hedge_features/ui_planner.py`: Streamlit planner workflow (setup, map review, override audit trail, exports)
 - `hedge_features/frameworks/bats_screening_v1/`: bundled versioned screening artefacts (manifest, registry, thresholds, confidence rules, model spec)
-- `hedge_features/features/`: geometry, vector, raster, network feature calculators
+- `hedge_features/features/`: geometry, vector, raster, network feature calculators, including categorical land-cover proportions and lightweight landscape metrics
 - `hedge_features/datasets/`: dataset registry and local cache path resolution
 - `hedge_features/cli.py`: command line interface
 - `hedge_features/ui_streamlit.py`: Streamlit UI for enrichment + GIS-only screening
