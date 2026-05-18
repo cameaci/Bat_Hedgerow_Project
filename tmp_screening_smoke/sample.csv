@@ -1,2 +1,0 @@
-hf_uid,geom_length_m,geom_endpoint_dist_m,geom_sinuosity,net_degree_max,dist_os_road_m,dist_os_river_m,buf100_os_road_density_m_per_ha,buf100_worldcover_tree_pct,buf100_worldcover_built_pct,buf100_worldcover_water_pct,buf100_worldcover_wetland_pct,buf100_nightlight_mean,roostpx_struct_proxy_score,mhb_roost_proxy_score,mhb_dem_shelter_idx_100m,deploy_status,roostpx_status,depwx_status,moon_status,phi_coverage_flag,awi_coverage_flag,_merge
-a,120.0,90.0,1.2,3,40.0,30.0,25.0,0.55,0.1,0.05,0.15,10.0,0.7,0.65,0.6,ok,ok,ok,ok,1,1,both

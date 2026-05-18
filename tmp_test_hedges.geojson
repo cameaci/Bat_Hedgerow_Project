@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "tmp_test_hedges",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "name": "t1" }, "geometry": { "type": "LineString", "coordinates": [ [ -0.2, 51.5 ], [ -0.19, 51.505 ] ] } }
-]
-}

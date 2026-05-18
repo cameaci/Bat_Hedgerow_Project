@@ -21,8 +21,8 @@ _BATDETECT2_ALIASES: dict[str, tuple[str, ...]] = {
     "species": ("species", "class", "predicted_class", "label"),
     "confidence": ("prob", "score", "confidence", "max_prob"),
     "activity": ("call_count", "calls", "detections", "count"),
-    "latitude": ("latitude", "lat"),
-    "longitude": ("longitude", "lon", "lng"),
+    "latitude": ("latitude", "lat", "y"),
+    "longitude": ("longitude", "lon", "lng", "x"),
 }
 
 

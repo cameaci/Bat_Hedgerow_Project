@@ -1,2 +1,0 @@
-[console_scripts]
-hedge-features = hedge_features.cli:main

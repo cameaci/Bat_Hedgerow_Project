@@ -34,6 +34,10 @@ def _subset_by_bbox(target_gdf, geom):
     return target_gdf.iloc[idx]
 
 
+def _geometry_union(geometry):
+    return geometry.union_all() if hasattr(geometry, "union_all") else geometry.unary_union
+
+
 def add_vector_distance(
     hedges_gdf,
     target_gdf,
@@ -53,7 +57,7 @@ def add_vector_distance(
         note = f"Target geometry types do not match expected {geometry_kinds}; distances still computed."
     else:
         note = None
-    union_geom = target_gdf.geometry.unary_union
+    union_geom = _geometry_union(target_gdf.geometry)
     gdf[distance_column] = gdf.geometry.distance(union_geom)
     if coverage_flag_column:
         # Coarse coverage: use dataset bounds intersection with each segment.

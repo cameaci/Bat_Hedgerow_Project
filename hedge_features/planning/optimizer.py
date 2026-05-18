@@ -178,7 +178,12 @@ def _exact_combo_objective(gdf, combo, *, settings, budget: int) -> float:
     corridor = selected["optimization_corridor_unit"].astype(str).nunique() / denom
     guilds = [g for g in selected["optimization_primary_guild"].astype(str).tolist() if g != "unknown"]
     habitat = (len(set(guilds)) / max(float(len(set(guilds)) or 1), 1.0)) if guilds else 0.0
-    high_risk = float(selected["optimization_high_risk_flag"].astype(int).sum()) / denom
+    high_risk = float(
+        (
+            selected["optimization_high_risk_flag"].astype(int)
+            * selected["optimization_high_risk_score"].astype(float).clip(lower=0.0, upper=1.0)
+        ).sum()
+    ) / denom
     uncertainty = float(selected["_optimizer_uncertainty"].astype(float).sum()) / denom
     redundancy = _exact_redundancy_penalty(selected)
     return (
@@ -256,12 +261,26 @@ def _prepare_optimizer_features(gdf, *, settings) -> None:
     source_length = pd.to_numeric(gdf.get("source_length_m"), errors="coerce").fillna(0.0)
     gdf["_optimizer_route_length_norm"] = _normalize_series(source_length)
 
-    if "planning_priority_score" in gdf.columns:
-        high_risk_score = pd.to_numeric(gdf["planning_priority_score"], errors="coerce").fillna(0.0)
-    elif "eco_suitability_score" in gdf.columns:
-        high_risk_score = pd.to_numeric(gdf["eco_suitability_score"], errors="coerce").fillna(0.0)
+    if "evidence_confidence_score" in gdf.columns:
+        confidence = pd.to_numeric(gdf["evidence_confidence_score"], errors="coerce").fillna(0.5)
+        gdf["_optimizer_uncertainty"] = (1.0 - confidence.clip(lower=0.0, upper=1.0)).astype(float)
     else:
-        high_risk_score = base_score
+        gdf["_optimizer_uncertainty"] = 0.0
+
+    if "planning_priority_score" in gdf.columns:
+        priority_score = pd.to_numeric(gdf["planning_priority_score"], errors="coerce").fillna(0.0)
+    elif "eco_suitability_score" in gdf.columns:
+        priority_score = pd.to_numeric(gdf["eco_suitability_score"], errors="coerce").fillna(0.0)
+    else:
+        priority_score = base_score
+
+    if "evidence_confidence_score" in gdf.columns:
+        high_risk_score = (
+            (0.60 * priority_score.clip(lower=0.0, upper=1.0))
+            + (0.40 * gdf["_optimizer_uncertainty"])
+        )
+    else:
+        high_risk_score = priority_score
     gdf["optimization_high_risk_score"] = high_risk_score.astype(float)
 
     eligible_scores = high_risk_score.loc[gdf["eligible_for_selection"].astype(int) == 1]
@@ -273,12 +292,6 @@ def _prepare_optimizer_features(gdf, *, settings) -> None:
     gdf["optimization_high_risk_flag"] = (
         pd.to_numeric(gdf["optimization_high_risk_score"], errors="coerce").fillna(0.0) >= threshold
     ).astype(int)
-
-    if "evidence_confidence_score" in gdf.columns:
-        confidence = pd.to_numeric(gdf["evidence_confidence_score"], errors="coerce").fillna(0.5)
-        gdf["_optimizer_uncertainty"] = (1.0 - confidence.clip(lower=0.0, upper=1.0)).astype(float)
-    else:
-        gdf["_optimizer_uncertainty"] = 0.0
 
     if "eco_primary_guild" in gdf.columns:
         gdf["_optimizer_guild_strength"] = gdf.apply(_primary_guild_strength, axis=1).astype(float)
@@ -404,7 +417,7 @@ def _high_risk_coverage_gain(row, *, state: _SelectionState) -> float:
         return 0.0
     risk_strength = _clip01(float(row["optimization_high_risk_score"]))
     if corridor_unit not in state.selected_high_risk_corridors:
-        return _clip01((0.75 * risk_strength) + (0.25 * float(row["_optimizer_base_score_norm"])))
+        return risk_strength
     if corridor_unit not in state.selected_corridor_units:
         return _clip01(0.35 * risk_strength)
     return 0.0

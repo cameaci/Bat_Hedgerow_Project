@@ -55,7 +55,9 @@ class AutoDataFetcher:
 
     def _compute_bbox_wgs84(self, buffer_m: float) -> tuple[float, float, float, float]:
         gpd = require_geopandas()
-        extent_poly = self.hedges_gdf.unary_union.buffer(float(buffer_m))
+        geometry = self.hedges_gdf.geometry
+        extent_geom = geometry.union_all() if hasattr(geometry, "union_all") else geometry.unary_union
+        extent_poly = extent_geom.buffer(float(buffer_m))
         extent_gdf = gpd.GeoDataFrame({"_": [1]}, geometry=[extent_poly], crs=self.working_crs).to_crs("EPSG:4326")
         minx, miny, maxx, maxy = extent_gdf.total_bounds
         # Clamp to valid lat/lon to avoid provider errors.
