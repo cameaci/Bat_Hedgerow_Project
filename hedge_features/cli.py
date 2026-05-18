@@ -216,6 +216,8 @@ def enrich(
 @click.option("--confidence-col", default=None, help="Confidence/probability column. Auto-detected when omitted.")
 @click.option("--activity-col", default=None, help="Activity/call-count column. Auto-detected when omitted; each row counts as 1.")
 @click.option("--min-confidence", default=None, type=float, help="Drop detections below this confidence before aggregation.")
+@click.option("--acoustic-timezone", default="UTC", show_default=True, help="Timezone used when assigning detections to acoustic survey nights.")
+@click.option("--night-rollover-hour", default=12, show_default=True, type=click.IntRange(0, 23), help="Local hour before which detections are assigned to the previous acoustic night.")
 @click.option("--working-crs", default="EPSG:27700", show_default=True)
 @click.option("--input-crs", default=None, help="Required if hedgerow input has no CRS metadata.")
 @click.option("--export-crs", default=None, help="CRS for output geometry, or omit to keep working CRS.")
@@ -238,6 +240,8 @@ def import_acoustics_cmd(
     confidence_col: str | None,
     activity_col: str | None,
     min_confidence: float | None,
+    acoustic_timezone: str,
+    night_rollover_hour: int,
     working_crs: str,
     input_crs: str | None,
     export_crs: str | None,
@@ -262,6 +266,8 @@ def import_acoustics_cmd(
         confidence_column=confidence_col,
         activity_column=activity_col,
         min_confidence=min_confidence,
+        acoustic_timezone=acoustic_timezone,
+        night_rollover_hour=night_rollover_hour,
     )
     out_gdf, summary = import_acoustic_evidence(hedges_gdf, detections_df, settings=settings)
     notes = list(read_notes)

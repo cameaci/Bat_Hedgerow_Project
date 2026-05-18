@@ -40,23 +40,30 @@ def import_acoustic_evidence(hedges_gdf, detections_df, *, settings: AcousticImp
     if hedges_gdf.crs is None:
         raise ValueError("Hedgerow input must have a CRS before acoustic spatial matching.")
 
-    detections = _normalise_detection_columns(detections_df.copy(), settings=settings)
+    detections, column_audit = _normalise_detection_columns(detections_df.copy(), settings=settings)
     initial_records = int(len(detections))
     notes: list[str] = []
+    drop_reason_counts: dict[str, int] = {}
 
     if settings.min_confidence is not None and "acoustic_confidence" in detections.columns:
         conf = pd.to_numeric(detections["acoustic_confidence"], errors="coerce")
-        detections = detections.loc[conf.fillna(-1.0) >= float(settings.min_confidence)].copy()
+        keep = conf.fillna(-1.0) >= float(settings.min_confidence)
+        drop_reason_counts["below_min_confidence"] = int((~keep).sum())
+        detections = detections.loc[keep].copy()
+    elif settings.min_confidence is not None:
+        notes.append("Minimum confidence was requested, but no confidence column was detected; no confidence filter was applied.")
     filtered_records = int(len(detections))
 
     if settings.detection_hedge_id_column:
-        linked, link_notes = _link_by_hedge_id(hedges_gdf, detections, settings=settings)
+        linked, link_notes, link_drop_counts = _link_by_hedge_id(hedges_gdf, detections, settings=settings)
     else:
-        linked, link_notes = _link_by_nearest_geometry(hedges_gdf, detections, settings=settings)
+        linked, link_notes, link_drop_counts = _link_by_nearest_geometry(hedges_gdf, detections, settings=settings)
     notes.extend(link_notes)
+    for key, value in link_drop_counts.items():
+        drop_reason_counts[key] = drop_reason_counts.get(key, 0) + int(value)
 
     matched_records = int(len(linked))
-    summary_df = _aggregate_linked_detections(linked, hedge_id_column=settings.hedge_id_column)
+    summary_df = _aggregate_linked_detections(linked, hedge_id_column=settings.hedge_id_column, settings=settings)
 
     out = hedges_gdf.copy()
     out[settings.hedge_id_column] = out[settings.hedge_id_column].astype("string")
@@ -72,6 +79,9 @@ def import_acoustic_evidence(hedges_gdf, detections_df, *, settings: AcousticImp
         "unmatched_detection_records": max(filtered_records - matched_records, 0),
         "hedgerow_count": int(len(hedges_gdf)),
         "hedgerows_with_acoustic_evidence": int((out["acoustic_detection_count"].fillna(0).astype(float) > 0).sum()),
+        "column_audit": column_audit,
+        "drop_reason_counts": drop_reason_counts,
+        "adapter_version": "acoustic_import_v2",
         "notes": notes,
     }
     return out, summary
@@ -91,10 +101,21 @@ def _normalise_detection_columns(df, *, settings: AcousticImportSettings):
         "latitude": settings.latitude_column,
         "longitude": settings.longitude_column,
     }
+    audit: dict[str, Any] = {
+        "source_format": settings.source_format,
+        "canonical_to_source": {},
+        "missing_optional_columns": [],
+        "explicit_columns": {k: v for k, v in explicit.items() if v},
+    }
     for canonical, explicit_name in explicit.items():
         source_col = explicit_name or _find_column(df.columns, aliases.get(canonical, ()))
+        if explicit_name and explicit_name not in df.columns:
+            raise ValueError(f"Explicit acoustic {canonical} column '{explicit_name}' was not found.")
         if source_col and source_col in df.columns:
             df[f"acoustic_{canonical}"] = df[source_col]
+            audit["canonical_to_source"][canonical] = source_col
+        else:
+            audit["missing_optional_columns"].append(canonical)
 
     if settings.detection_hedge_id_column:
         if settings.detection_hedge_id_column not in df.columns:
@@ -102,8 +123,9 @@ def _normalise_detection_columns(df, *, settings: AcousticImportSettings):
                 f"Detection hedgerow id column '{settings.detection_hedge_id_column}' was not found."
             )
         df["acoustic_hedge_id"] = df[settings.detection_hedge_id_column].astype("string")
+        audit["canonical_to_source"]["hedge_id"] = settings.detection_hedge_id_column
 
-    return df
+    return df, audit
 
 
 def _find_column(columns, aliases: tuple[str, ...]) -> str | None:
@@ -120,9 +142,10 @@ def _link_by_hedge_id(hedges_gdf, detections, *, settings: AcousticImportSetting
     linked[settings.hedge_id_column] = linked["acoustic_hedge_id"].astype("string")
     before = int(len(linked))
     linked = linked.loc[linked[settings.hedge_id_column].isin(valid_ids)].copy()
+    dropped = before - int(len(linked))
     linked["acoustic_match_distance_m"] = 0.0
-    notes = [f"Linked acoustic detections by hedgerow id; dropped {before - len(linked)} unmatched record(s)."]
-    return linked, notes
+    notes = [f"Linked acoustic detections by hedgerow id; dropped {dropped} unmatched record(s)."]
+    return linked, notes, {"unmatched_hedgerow_id": dropped}
 
 
 def _link_by_nearest_geometry(hedges_gdf, detections, *, settings: AcousticImportSettings):
@@ -141,6 +164,7 @@ def _link_by_nearest_geometry(hedges_gdf, detections, *, settings: AcousticImpor
     lat = pd.to_numeric(detections[lat_col], errors="coerce")
     lon = pd.to_numeric(detections[lon_col], errors="coerce")
     valid = lat.notna() & lon.notna()
+    invalid_location_count = int((~valid).sum())
     records = detections.loc[valid].copy()
     points = [Point(float(x), float(y)) for x, y in zip(lon.loc[valid], lat.loc[valid])]
     points_gdf = gpd.GeoDataFrame(records, geometry=points, crs=settings.detections_crs)
@@ -160,15 +184,19 @@ def _link_by_nearest_geometry(hedges_gdf, detections, *, settings: AcousticImpor
     linked = joined.loc[joined[settings.hedge_id_column].notna()].copy()
     linked[settings.hedge_id_column] = linked[settings.hedge_id_column].astype("string")
     dropped = int(len(detections) - len(linked))
+    unmatched_spatial_count = max(dropped - invalid_location_count, 0)
     notes = [
         "Linked acoustic detections by nearest hedgerow geometry"
         + (f" within {max_distance:g} m" if max_distance is not None else "")
         + f"; dropped {dropped} unmatched/invalid-location record(s)."
     ]
-    return linked, notes
+    return linked, notes, {
+        "invalid_coordinates": invalid_location_count,
+        "unmatched_spatial": unmatched_spatial_count,
+    }
 
 
-def _aggregate_linked_detections(linked, *, hedge_id_column: str):
+def _aggregate_linked_detections(linked, *, hedge_id_column: str, settings: AcousticImportSettings):
     import pandas as pd
 
     if linked.empty:
@@ -186,6 +214,10 @@ def _aggregate_linked_detections(linked, *, hedge_id_column: str):
                 "acoustic_first_detection",
                 "acoustic_last_detection",
                 "acoustic_mean_match_distance_m",
+                "acoustic_night_count",
+                "acoustic_detections_per_night_mean",
+                "acoustic_detections_per_night_max",
+                "acoustic_active_nights_pct",
             ]
         )
 
@@ -201,8 +233,16 @@ def _aggregate_linked_detections(linked, *, hedge_id_column: str):
         working["_activity_num"] = 1.0
     if "acoustic_datetime" in working.columns:
         working["_datetime"] = pd.to_datetime(working["acoustic_datetime"], errors="coerce", utc=True)
+        working["_acoustic_night"] = working["_datetime"].map(
+            lambda value: _acoustic_night_label(
+                value,
+                timezone_name=settings.acoustic_timezone,
+                rollover_hour=int(settings.night_rollover_hour),
+            )
+        )
     else:
         working["_datetime"] = pd.NaT
+        working["_acoustic_night"] = None
     if "acoustic_match_distance_m" in working.columns:
         working["_distance_num"] = pd.to_numeric(working["acoustic_match_distance_m"], errors="coerce")
     else:
@@ -214,6 +254,9 @@ def _aggregate_linked_detections(linked, *, hedge_id_column: str):
         guilds = _unique_nonempty(group.get("acoustic_guild"))
         first = group["_datetime"].min()
         last = group["_datetime"].max()
+        nightly_counts = group["_acoustic_night"].dropna().astype(str).value_counts()
+        night_count = int(len(nightly_counts))
+        active_nights_pct = _active_nights_pct(nightly_counts.index.tolist())
         rows.append(
             {
                 hedge_id_column: str(hedge_id),
@@ -228,9 +271,41 @@ def _aggregate_linked_detections(linked, *, hedge_id_column: str):
                 "acoustic_first_detection": None if pd.isna(first) else first.isoformat(),
                 "acoustic_last_detection": None if pd.isna(last) else last.isoformat(),
                 "acoustic_mean_match_distance_m": _round_or_none(group["_distance_num"].mean()),
+                "acoustic_night_count": night_count,
+                "acoustic_detections_per_night_mean": _round_or_none(nightly_counts.mean()) if night_count else None,
+                "acoustic_detections_per_night_max": int(nightly_counts.max()) if night_count else 0,
+                "acoustic_active_nights_pct": active_nights_pct,
             }
         )
     return pd.DataFrame(rows)
+
+
+def _active_nights_pct(night_labels: list[str]) -> float | None:
+    from datetime import date
+
+    if not night_labels:
+        return None
+    dates = sorted(date.fromisoformat(str(label)) for label in night_labels)
+    span_days = (dates[-1] - dates[0]).days + 1
+    if span_days <= 0:
+        return None
+    return round(float(len(dates) / span_days), 6)
+
+
+def _acoustic_night_label(value, *, timezone_name: str, rollover_hour: int) -> str | None:
+    import pandas as pd
+    from zoneinfo import ZoneInfo
+
+    if pd.isna(value):
+        return None
+    try:
+        local = value.tz_convert(ZoneInfo(timezone_name))
+    except Exception:
+        local = value
+    rollover = max(0, min(int(rollover_hour), 23))
+    if int(local.hour) < rollover:
+        local = local - pd.Timedelta(days=1)
+    return local.date().isoformat()
 
 
 def _unique_nonempty(series) -> list[str]:
@@ -265,6 +340,10 @@ def _fill_acoustic_defaults(gdf):
         "acoustic_first_detection": None,
         "acoustic_last_detection": None,
         "acoustic_mean_match_distance_m": None,
+        "acoustic_night_count": 0,
+        "acoustic_detections_per_night_mean": None,
+        "acoustic_detections_per_night_max": 0,
+        "acoustic_active_nights_pct": None,
     }
     for col, default in defaults.items():
         if col not in gdf.columns:
@@ -272,6 +351,6 @@ def _fill_acoustic_defaults(gdf):
         else:
             if default in {0, 0.0, ""}:
                 gdf[col] = gdf[col].fillna(default)
-    for col in ("acoustic_detection_count", "acoustic_species_count", "acoustic_guild_count"):
+    for col in ("acoustic_detection_count", "acoustic_species_count", "acoustic_guild_count", "acoustic_night_count", "acoustic_detections_per_night_max"):
         gdf[col] = gdf[col].astype(int)
     return gdf

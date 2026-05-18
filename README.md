@@ -123,7 +123,7 @@ hedge-features import-acoustics `
   --json-summary
 ```
 
-If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, and mean match distance.
+If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, mean match distance, acoustic-night counts, detections-per-night summaries, and an import audit in the JSON/metadata payload covering column mappings and dropped-record reasons. Use `--acoustic-timezone` and `--night-rollover-hour` to control acoustic-night assignment.
 
 ## Streamlit UI
 

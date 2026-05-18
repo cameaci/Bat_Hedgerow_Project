@@ -13,6 +13,13 @@ class RasterFeatureResult:
     notes: list[str]
 
 
+LANDSCAPE_METRIC_REGISTRY: dict[str, str] = {
+    "edge_density_m_per_ha": "Class edge length divided by valid landscape area in hectares.",
+    "largest_patch_index": "Largest four-connected class patch area divided by valid landscape area.",
+    "core_area_pct": "Eight-neighbour interior class area divided by valid landscape area.",
+}
+
+
 def _stat_value(values, stat: str):
     np = require_numpy()
     if values.size == 0:
@@ -295,6 +302,13 @@ def add_raster_categorical_proportions_in_buffers(
         all_cols.extend([patch_richness_column_template.format(radius=radius) for radius in radii_m])
     landscape_class_names = [str(c) for c in (landscape_class_names or []) if str(c) in class_map]
     landscape_metrics = [str(m) for m in (landscape_metrics or [])]
+    unsupported_metrics = sorted(set(landscape_metrics) - set(LANDSCAPE_METRIC_REGISTRY))
+    if unsupported_metrics:
+        raise ValueError(
+            "Unsupported landscape metric(s): "
+            + ", ".join(unsupported_metrics)
+            + f". Supported: {sorted(LANDSCAPE_METRIC_REGISTRY)}"
+        )
     landscape_column_templates = dict(landscape_column_templates or {})
     landscape_cols = _landscape_metric_columns(
         radii_m=radii_m,

@@ -20,4 +20,6 @@ class AcousticImportSettings:
     confidence_column: str | None = None
     activity_column: str | None = None
     min_confidence: float | None = None
+    acoustic_timezone: str = "UTC"
+    night_rollover_hour: int = 12
     unmatched_output: bool = False
