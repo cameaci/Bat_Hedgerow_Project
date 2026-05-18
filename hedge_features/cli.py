@@ -437,7 +437,7 @@ def validate_acoustics_cmd(
 @click.option("--endpoint-offset", default=20.0, show_default=True, type=float)
 @click.option("--min-detector-spacing", default=150.0, show_default=True, type=float)
 @click.option("--evidence-engine/--no-evidence-engine", default=True, show_default=True, help="Compute guild-based ecological evidence scores before planning.")
-@click.option("--optimizer", "optimizer_strategy", default="greedy", show_default=True, type=click.Choice(["greedy"], case_sensitive=False), help="Detector-selection optimizer strategy. Greedy is the deterministic v1 strategy; MILP is planned for a later sprint.")
+@click.option("--optimizer", "optimizer_strategy", default="greedy", show_default=True, type=click.Choice(["greedy", "exact"], case_sensitive=False), help="Detector-selection optimizer strategy. Greedy is the deterministic v1 strategy; exact searches small candidate sets exhaustively.")
 @click.option("--objective-weight", "objective_weight_entries", multiple=True, help="Override planner objective weight NAME=FLOAT. Supported names: base_score, route_coverage, corridor_coverage, habitat_representation, high_risk_coverage, uncertainty_reduction, redundancy_penalty.")
 @click.option("--score-column", default=None, help="Optional numeric source column used to override the computed planning priority score.")
 @click.option("--target-scenario", default="all_bats", show_default=True, help="Planner evidence target scenario, e.g. all_bats, edge_commuter, common_pipistrelle, barbastelle.")

@@ -88,14 +88,14 @@ hedge-features plan-statics `
   --json-summary
 ```
 
-Planner optimisation can be tuned while retaining the deterministic greedy v1 strategy:
+Planner optimisation can be tuned with deterministic greedy selection or the small-candidate exact strategy:
 
 ```powershell
 hedge-features plan-statics `
   --input enriched.gpkg `
   --output static_plan.gpkg `
   --detector-budget 12 `
-  --optimizer greedy `
+  --optimizer exact `
   --objective-weight base_score=0.45 `
   --objective-weight high_risk_coverage=0.25 `
   --objective-weight redundancy_penalty=0.20
@@ -181,7 +181,7 @@ Screening UI modes:
 - The screening score (`survey_priority_score`) is a prioritisation/ranking score, not a calibrated bat occurrence probability unless a calibrated framework artefact is explicitly packaged and enabled.
 - Planning uses a transparent guild-based evidence engine (`edge_open`, `clutter_linear`, `woodland_sensitive`) and writes `eco_suitability_score`, `survey_utility_score`, `planning_priority_score`, `evidence_confidence_level`, and `evidence_reason_codes`.
 - The planner ignores `mhb_roost_proxy_score` in evidence scoring to avoid double-counting the same roost signal already represented by `roostpx_struct_proxy_score`.
-- Detector selection now uses a deterministic greedy coverage optimizer rather than simple top-K score ranking. The optimizer balances habitat representation, route/corridor coverage, high-risk corridor coverage, uncertainty reduction, and redundancy minimisation; CLI objective-weight overrides can tune those trade-offs per run.
+- Detector selection now uses a deterministic greedy coverage optimizer by default rather than simple top-K score ranking. A small-candidate exact strategy is also available for exhaustive integer search. Both strategies balance habitat representation, route/corridor coverage, high-risk corridor coverage, uncertainty reduction, and redundancy minimisation; CLI objective-weight overrides can tune those trade-offs per run.
 - The Streamlit planner adds a map-first review workflow with `Project Setup`, `Candidate Map`, `Optimisation`, `Expert Review`, and `Exports` surfaces, plus a review audit trail and reviewed GeoPackage export layers (`source_hedges`, `candidates`, `selected_auto`, `selected_final`).
 - The planner evidence pack is intended for defensible review: the candidate and screened exports now carry explicit `why selected`, `why not selected`, missing-data summaries, confidence summaries, dataset provenance, and framework version metadata.
 

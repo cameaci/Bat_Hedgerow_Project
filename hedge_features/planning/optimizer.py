@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import combinations
 
 
 @dataclass(slots=True)
@@ -14,8 +15,8 @@ class _SelectionState:
 
 def select_detector_locations(candidates_gdf, *, settings):
     strategy = str(getattr(settings, "optimizer_strategy", "greedy") or "greedy").lower()
-    if strategy not in {"greedy", "greedy_coverage"}:
-        raise ValueError(f"Unsupported optimizer strategy '{strategy}'. Supported: greedy.")
+    if strategy not in {"greedy", "greedy_coverage", "exact"}:
+        raise ValueError(f"Unsupported optimizer strategy '{strategy}'. Supported: greedy, exact.")
 
     gdf = candidates_gdf.copy()
     _ensure_optimizer_columns(gdf)
@@ -24,6 +25,8 @@ def select_detector_locations(candidates_gdf, *, settings):
     budget = max(int(settings.detector_budget), 0)
     if budget == 0:
         return gdf.iloc[0:0].copy(), gdf
+    if strategy == "exact":
+        return _select_detector_locations_exact(gdf, settings=settings)
 
     state = _SelectionState()
     rank = 1
@@ -82,6 +85,125 @@ def select_detector_locations(candidates_gdf, *, settings):
     ] = "eligible_unselected"
 
     return selected, gdf
+
+
+def _select_detector_locations_exact(gdf, *, settings):
+    eligible = gdf[gdf["eligible_for_selection"].astype(int) == 1].copy()
+    if eligible.empty:
+        gdf.loc[gdf["selected_flag"].astype(int) == 0, "planning_status"] = "ineligible"
+        return gdf.iloc[0:0].copy(), gdf
+
+    max_candidates = max(int(getattr(settings, "exact_optimizer_max_candidates", 18)), 1)
+    if len(eligible) > max_candidates:
+        raise ValueError(
+            f"Exact optimizer supports at most {max_candidates} eligible candidates in this build; "
+            f"found {len(eligible)}. Use --optimizer greedy or raise exact_optimizer_max_candidates."
+        )
+
+    candidates = list(eligible.sort_values("candidate_id").index)
+    budget = min(max(int(settings.detector_budget), 0), len(candidates))
+    best_combo: tuple | None = None
+    best_key: tuple[float, int, tuple[str, ...]] | None = None
+    for size in range(1, budget + 1):
+        for combo in combinations(candidates, size):
+            if not _exact_combo_feasible(gdf, combo, settings=settings):
+                continue
+            value = _exact_combo_objective(gdf, combo, settings=settings, budget=budget)
+            candidate_ids = tuple(str(gdf.at[idx, "candidate_id"]) for idx in combo)
+            key = (float(value), int(size), tuple(reversed(candidate_ids)))
+            if best_key is None or key > best_key:
+                best_key = key
+                best_combo = combo
+
+    if not best_combo:
+        selected = gdf.iloc[0:0].copy()
+        gdf.loc[gdf["eligible_for_selection"].astype(int) == 1, "planning_status"] = "eligible_unselected"
+        return selected, gdf
+
+    state = _SelectionState()
+    ordered = sorted(
+        best_combo,
+        key=lambda idx: (
+            -_exact_candidate_base_value(gdf.loc[idx], settings=settings),
+            str(gdf.at[idx, "candidate_id"]),
+        ),
+    )
+    for rank, idx in enumerate(ordered, start=1):
+        metrics = _marginal_metrics(gdf.loc[idx], settings=settings, state=state)
+        _apply_selection(
+            gdf,
+            idx=idx,
+            rank=rank,
+            phase="exact_integer",
+            state=state,
+            metrics=metrics,
+            settings=settings,
+        )
+
+    selected = gdf[gdf["selected_flag"].astype(int) == 1].copy()
+    if not selected.empty:
+        selected = selected.sort_values("selection_rank").reset_index(drop=True)
+    gdf.loc[
+        (gdf["eligible_for_selection"].astype(int) == 1) & (gdf["selected_flag"].astype(int) == 0),
+        "planning_status",
+    ] = "eligible_unselected"
+    return selected, gdf
+
+
+def _exact_combo_feasible(gdf, combo, *, settings) -> bool:
+    if settings.section_column and settings.section_minimum_counts:
+        route_counts: dict[str, int] = {}
+        for idx in combo:
+            route = str(gdf.at[idx, "optimization_route_unit"])
+            route_counts[route] = route_counts.get(route, 0) + 1
+        for section_name, needed in settings.section_minimum_counts.items():
+            if route_counts.get(str(section_name), 0) < int(needed):
+                return False
+    min_spacing = float(settings.min_detector_spacing_m)
+    for left_pos, left_idx in enumerate(combo):
+        left_geom = gdf.at[left_idx, gdf.geometry.name]
+        for right_idx in combo[left_pos + 1:]:
+            if float(left_geom.distance(gdf.at[right_idx, gdf.geometry.name])) < min_spacing:
+                return False
+    return True
+
+
+def _exact_combo_objective(gdf, combo, *, settings, budget: int) -> float:
+    selected = gdf.loc[list(combo)]
+    denom = max(float(budget), 1.0)
+    route_weight = float(settings.objective_weight_route_coverage)
+    corridor_weight = float(getattr(settings, "objective_weight_corridor_coverage", 0.0) or 0.0)
+    base = sum(_exact_candidate_base_value(row, settings=settings) for _, row in selected.iterrows()) / denom
+    route = selected["optimization_route_unit"].astype(str).nunique() / denom
+    corridor = selected["optimization_corridor_unit"].astype(str).nunique() / denom
+    guilds = [g for g in selected["optimization_primary_guild"].astype(str).tolist() if g != "unknown"]
+    habitat = (len(set(guilds)) / max(float(len(set(guilds)) or 1), 1.0)) if guilds else 0.0
+    high_risk = float(selected["optimization_high_risk_flag"].astype(int).sum()) / denom
+    uncertainty = float(selected["_optimizer_uncertainty"].astype(float).sum()) / denom
+    redundancy = _exact_redundancy_penalty(selected)
+    return (
+        (float(settings.objective_weight_base_score) * base)
+        + (route_weight * route)
+        + (corridor_weight * corridor)
+        + (float(settings.objective_weight_habitat_representation) * habitat)
+        + (float(settings.objective_weight_high_risk_coverage) * high_risk)
+        + (float(settings.objective_weight_uncertainty_reduction) * uncertainty)
+        - (float(settings.objective_weight_redundancy_penalty) * redundancy)
+    )
+
+
+def _exact_candidate_base_value(row, *, settings) -> float:
+    return float(row["_optimizer_base_score_norm"])
+
+
+def _exact_redundancy_penalty(selected) -> float:
+    if selected.empty:
+        return 0.0
+    count = float(len(selected))
+    duplicate_corridors = count - float(selected["optimization_corridor_unit"].astype(str).nunique())
+    duplicate_routes = count - float(selected["optimization_route_unit"].astype(str).nunique())
+    duplicate_guilds = count - float(selected["optimization_primary_guild"].astype(str).nunique())
+    return _clip01(((0.45 * duplicate_corridors) + (0.25 * duplicate_routes) + (0.15 * duplicate_guilds)) / count)
 
 
 def _ensure_optimizer_columns(gdf) -> None:
@@ -339,7 +461,7 @@ def _apply_selection(gdf, *, idx, rank: int, phase: str, state: _SelectionState,
     gdf.at[idx, "selection_rank"] = int(rank)
     gdf.at[idx, "selection_phase"] = phase
     gdf.at[idx, "planning_status"] = "selected"
-    gdf.at[idx, "optimizer_strategy"] = str(getattr(settings, "optimizer_version", "greedy_coverage_v1"))
+    gdf.at[idx, "optimizer_strategy"] = _optimizer_version_for_settings(settings)
     gdf.at[idx, "optimizer_marginal_gain"] = float(metrics["total_gain"])
     gdf.at[idx, "optimizer_gain_base_score"] = float(metrics["base_gain"])
     gdf.at[idx, "optimizer_gain_route_coverage"] = float(metrics["route_gain"])
@@ -355,6 +477,13 @@ def _apply_selection(gdf, *, idx, rank: int, phase: str, state: _SelectionState,
         state.selected_high_risk_corridors.add(corridor_unit)
     state.guild_counts[guild] = state.guild_counts.get(guild, 0) + 1
     state.selected_geoms.append(gdf.at[idx, gdf.geometry.name])
+
+
+def _optimizer_version_for_settings(settings) -> str:
+    strategy = str(getattr(settings, "optimizer_strategy", "greedy") or "greedy").lower()
+    if strategy == "exact":
+        return "exact_integer_v1"
+    return str(getattr(settings, "optimizer_version", "greedy_coverage_v1"))
 
 
 def _passes_spacing(geom, selected_geoms, min_spacing_m: float) -> bool:

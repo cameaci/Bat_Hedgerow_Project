@@ -9,6 +9,7 @@ class PlanningSettings:
     detector_budget: int
     optimizer_version: str = "greedy_coverage_v1"
     optimizer_strategy: str = "greedy"
+    exact_optimizer_max_candidates: int = 18
     candidate_spacing_m: float = 100.0
     endpoint_offset_m: float = 20.0
     min_detector_spacing_m: float = 150.0
