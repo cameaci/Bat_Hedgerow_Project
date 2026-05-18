@@ -43,6 +43,7 @@ hedge-features = "hedge_features.cli:main"
 [tool.setuptools]
 packages = [
   "hedge_features",
+  "hedge_features.acoustics",
   "hedge_features.datasets",
   "hedge_features.features",
   "hedge_features.profiles",

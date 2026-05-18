@@ -536,6 +536,9 @@ def run_enrichment(options: RunOptions) -> dict[str, Any]:
                 class_map=class_map,
                 column_template=module_cfg["column_template"],
                 patch_richness_column_template=module_cfg.get("patch_richness_column_template"),
+                landscape_class_names=[str(c) for c in module_cfg.get("landscape_class_names", [])],
+                landscape_metrics=[str(m) for m in module_cfg.get("landscape_metrics", [])],
+                landscape_column_templates=module_cfg.get("landscape_column_templates") or {},
             )
             hedges_gdf = result.gdf
             notes.extend(result.notes)
