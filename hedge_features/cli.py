@@ -5,7 +5,13 @@ from pathlib import Path
 
 import click
 
-from .acoustics import AcousticImportSettings, import_acoustic_evidence, read_acoustic_table
+from .acoustics import (
+    AcousticImportSettings,
+    AcousticValidationSettings,
+    import_acoustic_evidence,
+    read_acoustic_table,
+    validate_acoustic_evidence,
+)
 from .deps import require_geopandas
 from .io import prepare_working_gdf, read_input_geodata, write_geodata
 from .models import RunOptions
@@ -78,6 +84,24 @@ def _read_input_metadata(input_path: Path) -> dict[str, object] | None:
                 "metadata_path": str(candidate),
             }
     return None
+
+
+def _read_table_or_geodata(path: Path):
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".xlsx"}:
+        return read_attribute_table(path)
+    gpd = require_geopandas()
+    return gpd.read_file(path)
+
+
+def _write_dataframe_csv(df, output_path: Path) -> str:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    out_df = df.copy()
+    geom_name = getattr(getattr(out_df, "geometry", None), "name", None)
+    if geom_name and geom_name in out_df.columns:
+        out_df = out_df.drop(columns=[geom_name])
+    out_df.to_csv(output_path, index=False)
+    return str(output_path)
 
 
 @click.group()
@@ -298,6 +322,70 @@ def import_acoustics_cmd(
         click.echo("Notes:")
         for note in notes:
             click.echo(f"- {note}")
+
+
+@main.command("validate-acoustics")
+@click.option("--input", "input_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Table or geodata already containing acoustic summary columns and a GIS score column.")
+@click.option("--score-column", default="survey_priority_score", show_default=True, help="Numeric GIS screening/planning score column to compare against acoustic evidence.")
+@click.option("--acoustic-presence-column", default="acoustic_detection_count", show_default=True, help="Numeric acoustic count/activity column used to define evidence presence.")
+@click.option("--presence-threshold", default=1.0, show_default=True, type=float, help="Minimum acoustic count/activity value treated as acoustic presence.")
+@click.option("--low-score-threshold", default=0.33, show_default=True, type=float, help="Scores at or below this threshold are treated as low GIS priority.")
+@click.option("--high-score-threshold", default=0.67, show_default=True, type=float, help="Scores at or above this threshold are treated as high GIS priority.")
+@click.option("--id-column", default="hf_uid", show_default=True, help="Optional row id column included in validation examples when present.")
+@click.option("--species-list-column", default="acoustic_species_list", show_default=True)
+@click.option("--guild-list-column", default="acoustic_guild_list", show_default=True)
+@click.option("--max-examples", default=20, show_default=True, type=int)
+@click.option("--output-json", default=None, type=click.Path(dir_okay=False, path_type=Path), help="Optional path for validation summary JSON.")
+@click.option("--output-csv", default=None, type=click.Path(dir_okay=False, path_type=Path), help="Optional path for annotated validation rows CSV.")
+@click.option("--json-summary/--no-json-summary", default=False, show_default=True)
+def validate_acoustics_cmd(
+    input_path: Path,
+    score_column: str,
+    acoustic_presence_column: str,
+    presence_threshold: float,
+    low_score_threshold: float,
+    high_score_threshold: float,
+    id_column: str | None,
+    species_list_column: str,
+    guild_list_column: str,
+    max_examples: int,
+    output_json: Path | None,
+    output_csv: Path | None,
+    json_summary: bool,
+):
+    """Compare GIS scores with imported acoustic evidence."""
+    df = _read_table_or_geodata(input_path)
+    settings = AcousticValidationSettings(
+        score_column=score_column,
+        acoustic_presence_column=acoustic_presence_column,
+        acoustic_presence_threshold=presence_threshold,
+        low_score_threshold=low_score_threshold,
+        high_score_threshold=high_score_threshold,
+        id_column=id_column,
+        species_list_column=species_list_column,
+        guild_list_column=guild_list_column,
+        max_examples=max_examples,
+    )
+    annotated, summary = validate_acoustic_evidence(df, settings=settings)
+    written: dict[str, str] = {}
+    if output_json is not None:
+        output_json.parent.mkdir(parents=True, exist_ok=True)
+        output_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        written["json"] = str(output_json)
+    if output_csv is not None:
+        written["csv"] = _write_dataframe_csv(annotated, output_csv)
+    payload = dict(summary)
+    payload["written"] = written
+    if json_summary:
+        click.echo(json.dumps(payload, indent=2))
+        return
+    click.echo(f"Rows: {summary['row_count']}")
+    click.echo(f"Acoustic presence rows: {summary['acoustic_presence_count']}")
+    cases = summary["validation_case_counts"]
+    click.echo(f"High score without acoustic evidence: {cases.get('high_score_no_acoustic_evidence', 0)}")
+    click.echo(f"Low score with acoustic evidence: {cases.get('low_score_with_acoustic_evidence', 0)}")
+    for key, value in written.items():
+        click.echo(f"{key}: {value}")
 
 
 @main.command("plan-statics")

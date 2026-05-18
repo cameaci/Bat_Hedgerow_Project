@@ -125,6 +125,19 @@ hedge-features import-acoustics `
 
 If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, mean match distance, acoustic-night counts, detections-per-night summaries, and an import audit in the JSON/metadata payload covering column mappings and dropped-record reasons. Use `--acoustic-timezone` and `--night-rollover-hour` to control acoustic-night assignment.
 
+Validating GIS screening scores against acoustic evidence:
+
+```powershell
+hedge-features validate-acoustics `
+  --input enriched_with_acoustics.csv `
+  --score-column survey_priority_score `
+  --output-json acoustic_validation.json `
+  --output-csv acoustic_validation_rows.csv `
+  --json-summary
+```
+
+The validation summary flags high-scoring segments without acoustic evidence, low-scoring segments with acoustic evidence, score-band/evidence cross-tabs, and species/guild counts by score band.
+
 ## Streamlit UI
 
 Run the app:
@@ -166,7 +179,7 @@ Screening UI modes:
 - `hedge_features/screening/`: reusable GIS-only screening engine (framework loading, column governance, confidence, I/O)
 - `hedge_features/planning/`: static detector planning engine (candidate generation, ecological evidence scoring, constraints, optimisation, reporting)
 - `hedge_features/species/`: species-model training, artefact writing, runtime inference, and domain-of-applicability logic
-- `hedge_features/acoustics/`: acoustic detection table import, adapter normalisation, hedgerow linking, and segment-level aggregation
+- `hedge_features/acoustics/`: acoustic detection table import, adapter normalisation, hedgerow linking, segment-level aggregation, and GIS-score validation summaries
 - `hedge_features/ui_planner.py`: Streamlit planner workflow (setup, map review, override audit trail, exports)
 - `hedge_features/frameworks/bats_screening_v1/`: bundled versioned screening artefacts (manifest, registry, thresholds, confidence rules, model spec)
 - `hedge_features/features/`: geometry, vector, raster, network feature calculators, including categorical land-cover proportions and lightweight landscape metrics
