@@ -213,6 +213,21 @@ def _metric_matching_crs(hedges_gdf, points_gdf):
     return "EPSG:3857"
 
 
+def _metric_matching_crs(hedges_gdf, points_gdf):
+    """Return a projected CRS for nearest matching so distances are measured in metres."""
+    hedge_crs = getattr(hedges_gdf, "crs", None)
+    if hedge_crs is not None and not bool(getattr(hedge_crs, "is_geographic", False)):
+        return hedge_crs
+    for source in (hedges_gdf, points_gdf):
+        try:
+            estimated = source.to_crs("EPSG:4326").estimate_utm_crs()
+        except Exception:
+            estimated = None
+        if estimated is not None:
+            return estimated
+    return "EPSG:3857"
+
+
 def _aggregate_linked_detections(linked, *, hedge_id_column: str, settings: AcousticImportSettings):
     import pandas as pd
 
