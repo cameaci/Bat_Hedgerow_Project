@@ -50,6 +50,7 @@ packages = [
   "hedge_features.planning",
   "hedge_features.species",
   "hedge_features.screening",
+  "hedge_features.v2",
   "hedge_features.frameworks",
   "hedge_features.frameworks.bats_screening_v1",
 ]
