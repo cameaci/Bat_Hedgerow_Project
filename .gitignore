@@ -22,3 +22,17 @@ tmp_*.gpkg
 tmp_*.geojson
 METADATA.json
 README_OUTPUT.txt
+
+# Locally pre-downloaded England datasets and clipped caches (do not commit large data).
+# data/README.md is kept; the dataset subfolders below are user-supplied.
+data/lidar/
+data/crome/
+data/os_open_rivers/
+data/os_open_roads/
+data/nightlights/
+data/ancient_trees/
+data/ne_phi/
+data/ne_awi/
+data/worldcover/
+data/cache/
+.hedge_features_cache/

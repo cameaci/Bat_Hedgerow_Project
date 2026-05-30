@@ -1,239 +1,87 @@
-# Hedge Features
+# Bat Hedgerow Suitability Index (HSI) — England
 
-`hedge-features` is a file-in, file-out GIS enrichment tool for hedgerow segments. It reads a hedgerow layer, computes ecological and landscape-context features from open data, appends them as new columns, and writes an enriched output dataset plus run metadata.
+A decision-support tool for ecologists: **upload a hedgerow shapefile → get a ranked list of
+which hedgerows to prioritise for static bat surveys**, with a map and downloadable outputs.
 
-It also includes a Streamlit-based **GIS-only bat survey screening / prioritisation** workflow for unsurveyed hedgerows. This screening uses only GIS-derived features from enriched outputs (or uploaded pre-enriched tables) and returns a prioritisation score, confidence, reason codes, and recommended action.
+It is a transparent, weighted implementation of the WSP / HyNet (Sarah Proctor) hedgerow
+suitability assessment — seven suitability indices (SI1–SI7) — derived remotely for England
+from open GIS data, plus a separate landscape-context layer to refine the survey priority.
 
-It also includes a **static detector planner** in both CLI and Streamlit UI form. The planner can generate candidate detector points from enriched hedgerows, compute guild-based ecological evidence scores, apply inclusion/exclusion/access constraints, select a deterministic detector set, support expert review with audit-trailed manual overrides, and write a bankability-oriented evidence pack.
+> The HSI measures *habitat suitability*, not bat presence. A high score means a hedgerow is a
+> higher priority to survey, not that bats are definitely present. Interpret it alongside survey
+> data and professional judgement.
 
-It also now includes a **species / calibration layer** for framework-specific bat targets. This layer does not ship with bundled calibrated species models by default, but it can train, validate, and package versioned species artefacts from historical static survey data when those labels are available.
+## What it does
 
-It now includes an **acoustic evidence import** workflow for linking bat detector outputs back to hedgerow segments. Acoustic tables can be joined directly by hedgerow id or spatially matched from detector latitude/longitude, then summarised into segment-level evidence columns for validation, calibration, and planning review.
+1. Reads a hedgerow line layer (zipped shapefile / GeoPackage / GeoJSON), reprojects to EPSG:27700.
+2. Derives the seven WSP suitability indices remotely (see below), each with a confidence flag.
+3. Computes the WSP suitability category (**Poor / Good / Excellent**) and a 0–1 survey-priority rank.
+4. Lets you fine-tune sub-index weights (sensible defaults) and filter/sort results by any sub-index.
+5. Exports a scored GeoPackage / Shapefile / CSV plus a method statement.
 
-The bankable profile also computes lightweight **landscape ecology metrics** from categorical land-cover rasters, including class edge density, largest patch index, and core-area proportion for selected bat-relevant classes such as trees, water, and wetlands.
+## The seven indices (WSP / HyNet)
 
-By default, the app now attempts to auto-fetch open datasets for the input AOI (OSM/ArcGIS/Planetary Computer-backed sources) when local dataset paths are not supplied.
+| Index | Measures | England remote proxy | Confidence |
+|------|----------|----------------------|------------|
+| SI1 Height | hedgerow height | EA 1 m LiDAR canopy-height model | Medium |
+| SI2 Width | hedgerow width | EA 1 m LiDAR canopy width | Medium |
+| SI3 Gappiness | canopy gaps | EA 1 m LiDAR gap fraction | Medium |
+| SI4 Arable margin | adjacent arable / margin | CROME / ESA WorldCover cropland | Low |
+| SI5 Trees present | trees per 50 m | EA 1 m LiDAR canopy / WorldCover | Medium |
+| SI6 Woody species diversity | woody species count | **precautionary default** (not remotely verifiable) | Low |
+| SI7 Wet ditch | wet ditch present | watercourse proximity (OS / OSM) | Low |
 
-## Supported Input
+The structural category is the unweighted arithmetic mean of SI1–SI7 (`<1.70` Poor, `1.70–2.39`
+Good, `≥2.40` Excellent). A **landscape-context** layer (woodland, water and roost proximity,
+darkness, connectivity, road quietness) is combined with the structural score
+(`priority = α·structure + (1−α)·context`, default α = 0.65) to give the final survey-priority rank.
+If you measured any index in the field, add it as a column (e.g. `height_m`, `woody_species_count_20m`)
+and it is used at high confidence instead of the proxy.
 
-- Zipped shapefile package (`.zip`) containing at least `.shp`, `.shx`, `.dbf` (and ideally `.prj`)
-- GeoPackage (`.gpkg`)
-- GeoJSON (`.geojson`, `.json`)
+## Quickstart
 
-`*.shx` alone is not a valid input. The tool rejects it with a clear error.
-
-## Output
-
-- Primary: GeoPackage (`.gpkg`)
-- Optional: zipped ESRI Shapefile (`.zip`) and CSV attributes (`.csv`)
-- `METADATA.json` is written alongside the output
-
-## Screening (GIS-only Bat Prioritisation)
-
-The Streamlit app now has a second workflow for screening unsurveyed hedgerows using GIS-derived features only.
-
-Two entry routes are supported:
-
-- Upload a **pre-enriched** table (`.csv` or `.xlsx`) containing GIS feature columns (for example `geom_*`, `net_*`, `dist_*`, `buf*_*`, `pt_*`, `roostpx_*`, `mhb_*`)
-- Run the in-app GIS enrichment workflow first, then apply screening to the enriched output in the same Streamlit session
-
-Screening outputs append columns such as:
-
-- `survey_priority_score` (ranking score; **not** a guaranteed probability)
-- `survey_priority_band` (`Low`, `Medium`, `High`)
-- `confidence_level`
-- `reason_codes`
-- `recommended_action`
-
-Default screening policy:
-
-- `Recall-first`
-
-Confidence is first-class:
-
-- low-confidence rows are flagged for review and are **not** auto-deprioritised
-- reason codes explain common issues (missing required predictors, low GIS coverage, status gaps, outliers, etc.)
-
-## Quick Start
-
-```powershell
-pip install -e ".[gis,dev]"
-hedge-features enrich `
-  --input hedges.zip `
-  --output enriched.gpkg `
-  --profile bats_v1 `
-  --json-summary
+```bash
+pip install -e .                 # installs the GIS + Streamlit stack
+streamlit run app.py             # open the app, upload a hedgerow layer
 ```
 
-Optional local path overrides (advanced):
+Try it with the bundled sample:
 
-```powershell
-hedge-features enrich `
-  --input hedges.zip `
-  --output enriched.gpkg `
-  --profile bats_v1 `
-  --dataset worldcover=C:\data\worldcover_10m.tif `
-  --dataset copdem=C:\data\copdem_glo30.tif
+```bash
+python scripts/check_sources.py --aoi sample_data/sample_hedgerows_england.gpkg
 ```
 
-Planning a first detector set:
+`sample_data/sample_hedgerows_england.gpkg` is a small England hedgerow network you can upload directly.
 
-```powershell
-hedge-features plan-statics `
-  --input enriched.gpkg `
-  --output static_plan.gpkg `
-  --detector-budget 12 `
-  --candidate-spacing 100 `
-  --min-detector-spacing 150 `
-  --json-summary
+## Data (England, optional pre-download)
+
+Live open data (OpenStreetMap, ESA WorldCover, Natural England Priority Habitats / Ancient
+Woodland) is fetched automatically and clipped to your area. For the **structural** indices
+(SI1–SI3, SI5) you need EA 1 m LiDAR, which is downloaded once into `data/`. See
+[`data/README.md`](data/README.md) for the folder layout and exact download links, and run
+`python scripts/check_sources.py` to verify which sources return data for your area.
+
+Without LiDAR the tool still ranks hedgerows from land-cover, water, woodland, roost and darkness
+context, and honestly flags the WSP category as **Incomplete** (field verification required).
+
+## Outputs
+
+- **Ranked table** — priority rank, WSP category & score, SI1–SI7 scores, confidence, recommended survey effort.
+- **Map** — hedgerows coloured by category, with the SI breakdown on hover.
+- **Downloads** — GeoPackage, zipped Shapefile, CSV, run metadata (`METADATA.json`) and a Markdown method statement.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest                           # 26 tests (scoring maths incl. the WSP worked example, LiDAR, context, offline degradation)
 ```
 
-Planner optimisation can be tuned with deterministic greedy selection or the small-candidate exact strategy:
+### Layout
 
-```powershell
-hedge-features plan-statics `
-  --input enriched.gpkg `
-  --output static_plan.gpkg `
-  --detector-budget 12 `
-  --optimizer exact `
-  --objective-weight base_score=0.45 `
-  --objective-weight high_risk_coverage=0.25 `
-  --objective-weight redundancy_penalty=0.20
-```
-
-The planner now writes an evidence pack alongside the requested screened output path:
-
-- screened hedgerow GPKG
-- candidate point GPKG
-- chosen detector set GPKG
-- run manifest JSON
-- evidence report Markdown
-
-Training a species-target calibration model:
-
-```powershell
-hedge-features train-species-model `
-  --input historical_static_surveys.csv `
-  --species-name "Pipistrellus pipistrellus" `
-  --target-column pip_pip_present `
-  --framework-name bats_screening_v1 `
-  --geography-column project_package `
-  --json-summary
-```
-
-Importing acoustic evidence and appending segment-level summaries:
-
-```powershell
-hedge-features import-acoustics `
-  --hedges enriched.gpkg `
-  --detections batdetect2_results.csv `
-  --output enriched_with_acoustics.gpkg `
-  --format batdetect2 `
-  --lat-col latitude `
-  --lon-col longitude `
-  --max-distance-m 50 `
-  --min-confidence 0.5 `
-  --json-summary
-```
-
-If your detection table already includes a hedgerow id, use `--detection-hedge-id-col` instead of latitude/longitude matching. Outputs include `acoustic_detection_count`, `acoustic_species_count`, `acoustic_species_list`, confidence summaries, activity totals, first/last detection times, mean match distance, acoustic-night counts, detections-per-night summaries, and an import audit in the JSON/metadata payload covering column mappings and dropped-record reasons. Use `--acoustic-timezone` and `--night-rollover-hour` to control acoustic-night assignment.
-
-Validating GIS screening scores against acoustic evidence:
-
-```powershell
-hedge-features validate-acoustics `
-  --input enriched_with_acoustics.csv `
-  --score-column survey_priority_score `
-  --output-json acoustic_validation.json `
-  --output-csv acoustic_validation_rows.csv `
-  --json-summary
-```
-
-The validation summary flags high-scoring segments without acoustic evidence, low-scoring segments with acoustic evidence, score-band/evidence cross-tabs, and species/guild counts by score band.
-
-## Streamlit UI
-
-Run the app:
-
-```powershell
-streamlit run .\hedge_features\ui_streamlit.py
-```
-
-Tabs/workflows in the UI:
-
-- `GIS Enrichment`: existing file-in, file-out enrichment flow (now also offers CSV download)
-- `GIS-only Bat Screening`: upload pre-enriched CSV/XLSX or reuse in-app enrichment output
-- `Static Detector Planner`: upload enriched geospatial hedgerows or reuse in-app enrichment output, run deterministic detector planning, review candidates on a map, apply expert overrides, and export reviewed GPKG/CSV/XLSX/JSON outputs
-
-Screening UI modes:
-
-- `Default`: strict GIS-only predictors, packaged thresholds, `Recall-first` policy, confidence override enabled
-- `Advanced`: policy, confidence strictness, thresholds, profile mismatch handling, and other controls
-
-## Notes
-
-- Working CRS defaults to `EPSG:27700` (British National Grid) for distance/area calculations.
-- If the input CRS is missing, supply `--input-crs` or the run will fail.
-- England-only datasets (e.g. PHI/AWI) should return nulls outside coverage; profile flags support this.
-- VIIRS nightlights may require authenticated sources in some environments; when anonymous auto-download is unavailable, the default profile fills nightlight columns using a documented open-data proxy (WorldCover built-up + road density) and records this in `METADATA.json`.
-- For Shapefile export, long field names are truncated and a field-map JSON is written.
-- Screening is a **decision-support framework**, not a replacement for ecological judgement.
-- The screening score (`survey_priority_score`) is a prioritisation/ranking score, not a calibrated bat occurrence probability unless a calibrated framework artefact is explicitly packaged and enabled.
-- Planning uses a transparent guild-based evidence engine (`edge_open`, `clutter_linear`, `woodland_sensitive`) and writes `eco_suitability_score`, `survey_utility_score`, `planning_priority_score`, `evidence_confidence_level`, and `evidence_reason_codes`.
-- The planner ignores `mhb_roost_proxy_score` in evidence scoring to avoid double-counting the same roost signal already represented by `roostpx_struct_proxy_score`.
-- Detector selection now uses a deterministic greedy coverage optimizer by default rather than simple top-K score ranking. A small-candidate exact strategy is also available for exhaustive integer search. Both strategies balance habitat representation, route/corridor coverage, high-risk corridor coverage, uncertainty reduction, and redundancy minimisation; CLI objective-weight overrides can tune those trade-offs per run.
-- The Streamlit planner adds a map-first review workflow with `Project Setup`, `Candidate Map`, `Optimisation`, `Expert Review`, and `Exports` surfaces, plus a review audit trail and reviewed GeoPackage export layers (`source_hedges`, `candidates`, `selected_auto`, `selected_final`).
-- The planner evidence pack is intended for defensible review: the candidate and screened exports now carry explicit `why selected`, `why not selected`, missing-data summaries, confidence summaries, dataset provenance, and framework version metadata.
-
-## Project Layout
-
-- `hedge_features/io.py`: input validation, ingestion, export, metadata
-- `hedge_features/pipeline.py`: profile-driven enrichment pipeline
-- `hedge_features/screening/`: reusable GIS-only screening engine (framework loading, column governance, confidence, I/O)
-- `hedge_features/planning/`: static detector planning engine (candidate generation, ecological evidence scoring, constraints, optimisation, reporting)
-- `hedge_features/species/`: species-model training, artefact writing, runtime inference, and domain-of-applicability logic
-- `hedge_features/acoustics/`: acoustic detection table import, adapter normalisation, hedgerow linking, segment-level aggregation, and GIS-score validation summaries
-- `hedge_features/ui_planner.py`: Streamlit planner workflow (setup, map review, override audit trail, exports)
-- `hedge_features/frameworks/bats_screening_v1/`: bundled versioned screening artefacts (manifest, registry, thresholds, confidence rules, model spec)
-- `hedge_features/features/`: geometry, vector, raster, network feature calculators, including categorical land-cover proportions and lightweight landscape metrics
-- `hedge_features/datasets/`: dataset registry and local cache path resolution
-- `hedge_features/cli.py`: command line interface
-- `hedge_features/ui_streamlit.py`: Streamlit UI for enrichment + GIS-only screening
-- `tests/`: unit and integration tests
-
-## Framework Artefacts (Screening)
-
-Bundled screening frameworks live under `hedge_features/frameworks/<framework_name>/` and are loaded at runtime.
-
-Current bundled package:
-
-- `hedge_features/frameworks/bats_screening_v1/`
-
-Key artefacts:
-
-- `framework_manifest.json`
-- `feature_registry.json`
-- `triage_model.json` (versioned scoring model spec; ranking score output)
-- `triage_thresholds.json`
-- `confidence_rules.json`
-- `species_models/` (optional, currently placeholder)
-
-Species calibration artefacts created by `train-species-model` include:
-
-- `species_<target>_model.json`
-- `species_<target>_model_card.json`
-- `species_<target>_model_card.md`
-- `species_<target>_domain.json`
-- `species_<target>_training_summary.json`
-
-When trained species models are present in the framework bundle and the screening species module is enabled, the screening engine appends:
-
-- `species_<target>_probability`
-- `species_<target>_domain_score`
-- `species_<target>_domain_status`
-- `species_<target>_reason_codes`
-- `README_framework.md`
-
-This design keeps screening logic versioned and separate from Streamlit UI code.
-
- streamlit run .\hedge_features\ui_streamlit.py
+- `hsi/` — the tool: `config` (weights, thresholds, England dataset registry), `ingest`, `datasets`
+  (local discovery + AOI clip + live fallback), `indices` (SI proxies), `context` (landscape layer),
+  `score` (the scoring engine), `pipeline` (orchestration), `report` (outputs + method statement).
+- `app.py` — the single Streamlit UI.
+- `scripts/check_sources.py` — probe each data source one-by-one for a test AOI.
+- `hedge_features/` — retained, proven GIS plumbing (I/O, dataset fetchers, feature calculators) reused by `hsi/`.
