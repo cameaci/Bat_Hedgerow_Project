@@ -184,6 +184,9 @@ def _resolve_si5(row) -> dict[str, Any]:
     value = _first_number(row, ("si5_tree_count_50m", "trees_per_50m"))
     if value is not None:
         return _component(_si_trees(value), "field", "High")
+    lidar_count = _first_number(row, ("lidar_trees_per_50m",))
+    if lidar_count is not None:
+        return _component(_si_trees(lidar_count), "proxy", "Medium", "SI5 from LiDAR canopy local-maxima tree count per 50 m.")
     standard_pct = _first_number(row, ("hedge_struct_tree_standard_pct_10m",))
     if standard_pct is not None:
         band = 1 if standard_pct <= 0 else 2 if standard_pct < 0.15 else 3 if standard_pct < 0.45 else 4
@@ -218,6 +221,9 @@ def _resolve_si7(row) -> dict[str, Any]:
     value = _first_bool(row, ("si7_wet_ditch_present", "wet_ditch_present"))
     if value is not None:
         return _component(2 if value else 1, "field", "High")
+    ditch = _first_number(row, ("ditch_present",))
+    if ditch is not None:
+        return _component(2 if ditch >= 1 else 1, "proxy", "Medium", "SI7 from LiDAR DTM ditch detection.")
     river_density = _first_number(row, ("buf100_os_river_density_m_per_ha", "buf250_os_river_density_m_per_ha"))
     dist_water = _first_number(row, ("dist_os_river_m",))
     wetland = _first_number(row, ("buf100_worldcover_wetland_pct",)) or 0.0

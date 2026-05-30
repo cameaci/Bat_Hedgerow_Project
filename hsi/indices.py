@@ -23,6 +23,8 @@ from hedge_features.features.vector import (
 
 from . import config
 from .datasets import DataResolver
+from .ditch import add_ditch
+from .treecount import add_tree_count
 
 
 def compute_si_proxies(gdf, resolver: DataResolver):
@@ -42,10 +44,23 @@ def compute_si_proxies(gdf, resolver: DataResolver):
         notes.append(f"LiDAR structure step failed ({exc}); SI1/SI2/SI3/SI5 will use fallbacks.")
     if not dtm_path or not dsm_path:
         notes.append(
-            "EA LiDAR DTM/DSM not provided — SI1 (height), SI2 (width) and SI3 (gappiness) "
-            "cannot be derived and the WSP category will be flagged Incomplete. Drop 1 m tiles "
-            "into data/lidar/{dtm,dsm} to enable them."
+            "EA LiDAR DTM/DSM not available — SI1 (height), SI2 (width), SI3 (gappiness) and the "
+            "LiDAR refinements of SI5 (tree count) and SI7 (ditch) cannot be derived; the WSP "
+            "category will be flagged Incomplete. Tiles auto-fetch via WCS, or drop 1 m tiles into "
+            "data/lidar/{dtm,dsm}."
         )
+
+    # --- SI5 real tree count + SI7 ditch detection from the same LiDAR ---
+    try:
+        gdf, tc_notes = add_tree_count(gdf, dtm_path=dtm_path, dsm_path=dsm_path)
+        notes.extend(tc_notes)
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"Tree-count step failed ({exc}).")
+    try:
+        gdf, dt_notes = add_ditch(gdf, dtm_path=dtm_path)
+        notes.extend(dt_notes)
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"Ditch-detection step failed ({exc}).")
 
     # --- WorldCover land cover (SI4 cropland, SI5 tree fallback, SI7 water/wetland) ---
     wc_path = resolver.get_raster_path("worldcover")

@@ -28,7 +28,8 @@ def test_offline_probe_degrades_without_network():
     aoi = check_sources._aoi_gdf_default()
     rows = check_sources.probe(aoi, only={"ea_lidar_dtm", "ne_phi"}, allow_live=False)
     by_name = {r["source"]: r for r in rows}
-    assert by_name["ea_lidar_dtm"]["status"] == "MISSING"   # local-only, not provided
+    # ea_lidar_dtm now has a WCS auto-provider, so with live disabled it degrades to NO_DATA.
+    assert by_name["ea_lidar_dtm"]["status"] in {"NO_DATA", "MISSING"}
     assert by_name["ne_phi"]["status"] == "NO_DATA"          # live disabled, no local copy
     # No source should report OK with live disabled and no local data.
     assert all(r["status"] != "OK" for r in rows)

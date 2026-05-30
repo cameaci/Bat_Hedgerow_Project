@@ -169,10 +169,21 @@ class DataResolver:
                 self.notes.append(f"Could not mosaic local '{name}' rasters: {exc}")
             self.status[name] = "local (no AOI overlap)"
             return None
-        # 2) live API
+        # 2) live: EA WCS (LiDAR) or STAC raster
         cfg = config.ENGLAND_DATASETS.get(name, {})
-        if cfg.get("local_only") or not self.allow_live_fetch:
-            self.status[name] = "absent (local-only, not provided)" if cfg.get("local_only") else "absent (live disabled)"
+        provider = cfg.get("auto_provider") or {}
+        if not self.allow_live_fetch:
+            self.status[name] = "absent (live disabled)"
+            return None
+        if provider.get("type") == "ea_wcs_raster":
+            out = self._fetch_wcs_raster(name, provider)
+            if out is not None:
+                self.status[name] = "live (WCS)"
+                return str(out)
+            self.status[name] = "WCS: no data"
+            return None
+        if cfg.get("local_only"):
+            self.status[name] = "absent (local-only, not provided)"
             return None
         path, notes = self.fetcher.ensure_dataset(name)
         self.notes.extend(notes)
@@ -180,6 +191,60 @@ class DataResolver:
             self.status[name] = "live raster"
             return path
         self.status[name] = "live: no data"
+        return None
+
+    def _fetch_wcs_raster(self, name: str, provider: dict) -> Path | None:
+        """Fetch an AOI subset from an OGC WCS 2.0.1 endpoint (EA LiDAR DTM/DSM)."""
+        import urllib.request
+
+        rasterio = require_rasterio()
+        wcs_url = provider.get("wcs_url")
+        if not wcs_url:
+            return None
+        key = sha1_text(f"{name}|{self._aoi_box.bounds}", length=16)
+        out_path = self.cache_dir / f"{name}_wcs_{key}.tif"
+        if out_path.exists():
+            return out_path
+        try:
+            coverage_id = self._wcs_coverage_id(wcs_url, provider.get("coverage_id"))
+        except Exception as exc:  # noqa: BLE001
+            self.notes.append(f"WCS GetCapabilities failed for '{name}': {exc}")
+            return None
+        if not coverage_id:
+            self.notes.append(f"No WCS coverage id discovered for '{name}'.")
+            return None
+        bounds = self._aoi_box.bounds  # EPSG:27700
+        # Axis labels vary by server; try the common conventions until one yields a raster.
+        for axis_e, axis_n in (("E", "N"), ("x", "y"), ("Long", "Lat"), ("i", "j")):
+            url = build_wcs_getcoverage_url(wcs_url, coverage_id, bounds, axis_e, axis_n)
+            tmp = out_path.with_suffix(".part")
+            try:
+                urllib.request.urlretrieve(url, tmp)
+                with rasterio.open(tmp):
+                    pass  # validates it is a readable raster, not an XML error
+                tmp.replace(out_path)
+                return out_path
+            except Exception:  # noqa: BLE001
+                try:
+                    tmp.unlink()
+                except Exception:  # noqa: BLE001
+                    pass
+                continue
+        self.notes.append(f"WCS GetCoverage failed for '{name}' (all axis conventions tried).")
+        return None
+
+    def _wcs_coverage_id(self, wcs_url: str, configured: str | None = None) -> str | None:
+        import urllib.request
+        from xml.etree import ElementTree as ET
+
+        if configured:
+            return configured
+        cap_url = f"{wcs_url}?service=WCS&version=2.0.1&request=GetCapabilities"
+        with urllib.request.urlopen(cap_url, timeout=60) as resp:
+            root = ET.fromstring(resp.read())
+        for el in root.iter():
+            if el.tag.endswith("CoverageId") and el.text and el.text.strip():
+                return el.text.strip()
         return None
 
     def _mosaic_clip_rasters(self, name: str, files: list[Path]) -> Path | None:
@@ -251,3 +316,29 @@ def _bounds_intersect(a, b) -> bool:
     al, ab, ar, at = a
     bl, bb, br, bt = b
     return not (ar < bl or br < al or at < bb or bt < ab)
+
+
+def build_wcs_getcoverage_url(
+    wcs_url: str,
+    coverage_id: str,
+    bounds,
+    axis_e: str = "E",
+    axis_n: str = "N",
+) -> str:
+    """Build an OGC WCS 2.0.1 GetCoverage URL for an AOI subset (native CRS, e.g. EPSG:27700).
+
+    Pure string builder (no network) so it can be unit-tested.
+    """
+    import urllib.parse
+
+    minx, miny, maxx, maxy = bounds
+    params = urllib.parse.urlencode({
+        "service": "WCS",
+        "version": "2.0.1",
+        "request": "GetCoverage",
+        "coverageId": coverage_id,
+        "format": "image/tiff",
+    })
+    subset_e = f"subset={axis_e}({minx:.2f},{maxx:.2f})"
+    subset_n = f"subset={axis_n}({miny:.2f},{maxy:.2f})"
+    return f"{wcs_url}?{params}&{subset_e}&{subset_n}"

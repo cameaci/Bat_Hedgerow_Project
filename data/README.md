@@ -2,8 +2,12 @@
 
 Drop pre-downloaded national datasets here **once**; the app auto-discovers them and clips
 each to your area of interest. Everything below is **optional** — anything missing falls
-back to a live API or a documented proxy — but the structural WSP indices (height, width,
-gappiness, trees) need EA LiDAR, so that one matters most.
+back to a live API or a documented proxy.
+
+**EA 1 m LiDAR (the structural indices SI1/SI2/SI3/SI5/SI7) is now auto-fetched for your
+area via the Environment Agency WCS**, so you no longer need to download it by hand. Put
+tiles in `data/lidar/{dtm,dsm}` only if you want to override the WCS (e.g. offline use, or
+WCS is slow/unavailable).
 
 Verify what works for your area any time:
 
@@ -15,15 +19,19 @@ python scripts/check_sources.py --aoi sample_data/sample_hedgerows_england.gpkg
 
 ```
 data/
-├── lidar/dtm/        EA LiDAR Composite DTM 1 m  (GeoTIFF/ASC tiles)   ← needed for SI1/SI2/SI3/SI5
-├── lidar/dsm/        EA LiDAR Composite DSM 1 m  (GeoTIFF/ASC tiles)   ← needed for SI1/SI2/SI3/SI5
+├── lidar/dtm/        EA LiDAR Composite DTM 1 m  (optional override; else auto-fetched by WCS)
+├── lidar/dsm/        EA LiDAR Composite DSM 1 m  (optional override; else auto-fetched by WCS)
 ├── crome/            RPA Crop Map of England (CROME) shapefile(s)       (refines SI4)
 ├── os_open_rivers/   OS Open Rivers (GeoPackage/SHP)                    (SI7 + water; else OSM)
 ├── os_open_roads/    OS Open Roads (GeoPackage/SHP)                     (road quietness; else OSM)
 ├── nightlights/      VIIRS VNL annual or Falchi 2016 raster            (darkness; else proxy)
 ├── ancient_trees/    Woodland Trust Ancient Tree Inventory (points)     (roost refinement)
+├── living_england/   Living England Habitat Map (polygons)             (enriches woodland context)
 └── cache/            auto-generated clipped copies (safe to delete)
 ```
+
+For **calibration** (the Calibrate tab) you don't put anything here — you upload a CSV of survey
+activity (e.g. crossing-point counts) with a column matching one of your hedgerow attributes.
 
 `ne_phi/`, `ne_awi/`, `worldcover/` are fetched live by default; drop local copies in those
 folders only if you want to avoid live calls.

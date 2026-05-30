@@ -147,6 +147,7 @@ LOCAL_DATA_SUBDIRS = {
     "ne_phi": "ne_phi",
     "ne_awi": "ne_awi",
     "worldcover": "worldcover",
+    "living_england": "living_england",
 }
 
 RASTER_EXTS = (".tif", ".tiff", ".asc", ".vrt")
@@ -232,8 +233,11 @@ ENGLAND_DATASETS = {
         "optional": True,
         "source_type": "raster_dtm",
         "coverage_scope": "england",
-        "local_only": True,
-        "download_hint": "https://environment.data.gov.uk/survey (LIDAR Composite DTM 1m) — tiles covering your AOI.",
+        "auto_provider": {
+            "type": "ea_wcs_raster",
+            "wcs_url": "https://environment.data.gov.uk/spatialdata/lidar-composite-digital-terrain-model-dtm-1m/wcs",
+        },
+        "download_hint": "Auto-fetched via EA WCS; or drop tiles in data/lidar/dtm from https://environment.data.gov.uk/survey (LIDAR Composite DTM 1m).",
     },
     "ea_lidar_dsm": {
         "license": "OGL v3.0",
@@ -241,8 +245,11 @@ ENGLAND_DATASETS = {
         "optional": True,
         "source_type": "raster_dsm",
         "coverage_scope": "england",
-        "local_only": True,
-        "download_hint": "https://environment.data.gov.uk/survey (LIDAR Composite DSM 1m) — tiles covering your AOI.",
+        "auto_provider": {
+            "type": "ea_wcs_raster",
+            "wcs_url": "https://environment.data.gov.uk/spatialdata/lidar-composite-digital-surface-model-first-return-dsm-1m/wcs",
+        },
+        "download_hint": "Auto-fetched via EA WCS; or drop tiles in data/lidar/dsm from https://environment.data.gov.uk/survey (LIDAR Composite DSM 1m).",
     },
     "crome": {
         "license": "OGL v3.0",
@@ -271,6 +278,15 @@ ENGLAND_DATASETS = {
         "local_only": True,
         "download_hint": "https://ati.woodlandtrust.org.uk (export for your AOI) — optional roost refinement.",
     },
+    "living_england": {
+        "license": "OGL v3.0",
+        "attribution": "Natural England Living England Habitat Map (OGL).",
+        "optional": True,
+        "source_type": "vector_polygons",
+        "coverage_scope": "england",
+        "local_only": True,
+        "download_hint": "https://naturalengland-defra.opendata.arcgis.com (Living England Habitat Map) — optional; drop in data/living_england to enrich woodland context.",
+    },
 }
 
 # WorldCover class codes (10 m) used for cropland (SI4) and land-cover context.
@@ -291,6 +307,10 @@ CROME_ARABLE_TOKENS = (
     "wheat", "barley", "oat", "cereal", "maize", "oilseed", "rape", "bean",
     "pea", "potato", "sugar", "linseed", "arable", "fallow", "AC",
 )
+
+# Living England habitat map: candidate class-field names and woodland tokens.
+LIVING_ENGLAND_FIELD_CANDIDATES = ("A_pred", "Primary_Hab", "primary_habitat", "habitat", "Habitat", "HABITAT", "main_habit")
+LIVING_ENGLAND_WOODLAND_TOKENS = ("wood", "broadleaf", "broadleaved", "forest")
 
 
 @dataclass(slots=True)

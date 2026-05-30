@@ -27,9 +27,14 @@ from open GIS data, plus a separate landscape-context layer to refine the survey
 | SI2 Width | hedgerow width | EA 1 m LiDAR canopy width | Medium |
 | SI3 Gappiness | canopy gaps | EA 1 m LiDAR gap fraction | Medium |
 | SI4 Arable margin | adjacent arable / margin | CROME / ESA WorldCover cropland | Low |
-| SI5 Trees present | trees per 50 m | EA 1 m LiDAR canopy / WorldCover | Medium |
+| SI5 Trees present | trees per 50 m | EA 1 m LiDAR tree-crown count (local maxima) / WorldCover | Medium |
 | SI6 Woody species diversity | woody species count | **precautionary default** (not remotely verifiable) | Low |
-| SI7 Wet ditch | wet ditch present | watercourse proximity (OS / OSM) | Low |
+| SI7 Wet ditch | wet ditch present | EA LiDAR ditch detection / watercourse proximity | Medium |
+
+EA 1 m LiDAR is **auto-fetched for your area via the Environment Agency WCS** — no manual download
+needed — and you can still drop local tiles in `data/lidar/` to override. Network connectivity is a
+**planar** graph metric (betweenness/closeness over the noded hedgerow network), so hedges that meet
+mid-span count as connected.
 
 The structural category is the unweighted arithmetic mean of SI1–SI7 (`<1.70` Poor, `1.70–2.39`
 Good, `≥2.40` Excellent). A **landscape-context** layer (woodland, water and roost proximity,
@@ -67,7 +72,11 @@ context, and honestly flags the WSP category as **Incomplete** (field verificati
 ## Outputs
 
 - **Ranked table** — priority rank, WSP category & score, SI1–SI7 scores, confidence, recommended survey effort.
-- **Map** — hedgerows coloured by category, with the SI breakdown on hover.
+- **Map** — hedgerows coloured by WSP category *or* by confidence, with the SI breakdown on hover.
+- **Explain** — for any hedgerow, a per-factor contribution breakdown (which SI / context drove its
+  priority, summing exactly to the score) plus a global sensitivity view (how much each weight moves the rankings).
+- **Calibrate** — upload survey activity (e.g. crossing-point counts) to check how well the HSI tracks
+  observed activity (Spearman, AUC) and optionally get re-tuned SI weights you can apply with one click.
 - **Downloads** — GeoPackage, zipped Shapefile, CSV, run metadata (`METADATA.json`) and a Markdown method statement.
 
 ## Development
@@ -80,8 +89,11 @@ pytest                           # 26 tests (scoring maths incl. the WSP worked 
 ### Layout
 
 - `hsi/` — the tool: `config` (weights, thresholds, England dataset registry), `ingest`, `datasets`
-  (local discovery + AOI clip + live fallback), `indices` (SI proxies), `context` (landscape layer),
-  `score` (the scoring engine), `pipeline` (orchestration), `report` (outputs + method statement).
-- `app.py` — the single Streamlit UI.
+  (local discovery + AOI clip + EA WCS / live fallback), `indices` (SI proxies), `treecount` (SI5 LiDAR
+  tree count), `ditch` (SI7 LiDAR ditch detection), `connectivity` (planar network), `context` (landscape
+  layer), `score` (the scoring engine), `explain` (contributions + sensitivity), `calibration` (validate /
+  tune against survey data), `pipeline` (orchestration), `report` (outputs + method statement).
+- `app.py` — the single Streamlit UI (Ranked table · Map · Explain · Calibrate · Data sources · Method).
 - `scripts/check_sources.py` — probe each data source one-by-one for a test AOI.
 - `hedge_features/` — retained, proven GIS plumbing (I/O, dataset fetchers, feature calculators) reused by `hsi/`.
+- CI runs the test suite on every push (`.github/workflows/ci.yml`).

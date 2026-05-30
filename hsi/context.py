@@ -70,6 +70,22 @@ def compute_context_subindices(gdf, resolver: DataResolver):
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"PHI woodland composition failed ({exc}).")
 
+    le = resolver.get_vector("living_england")
+    if le is not None and not le.empty:
+        le_field = next((f for f in config.LIVING_ENGLAND_FIELD_CANDIDATES if f in le.columns), None)
+        if le_field:
+            try:
+                comp = add_vector_polygon_composition_in_buffers(
+                    gdf, le, radii_m=[250],
+                    class_field=le_field,
+                    selected_classes={"le_broadleaf": {"contains_any": list(config.LIVING_ENGLAND_WOODLAND_TOKENS)}},
+                    column_template="buf{radius}_{class_name}_pct",
+                )
+                gdf = comp.gdf
+                notes.extend(comp.notes)
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"Living England woodland composition failed ({exc}).")
+
     awi = resolver.get_vector("ne_awi")
     gdf = _add_distance(gdf, awi, "dist_awi_ancwood_m", ["Polygon", "MultiPolygon"], notes)
 
@@ -115,15 +131,25 @@ def compute_context_subindices(gdf, resolver: DataResolver):
         dist_road = _first_number(row, ("dist_os_road_m",))
         dist_tree = _first_number(row, ("dist_ancient_tree_m",))
         phi_pct = _first_number(row, ("buf250_phi_broadleaved_woodland_pct",))
+        le_pct = _first_number(row, ("buf250_le_broadleaf_pct",))
         net_degree = _first_number(row, ("net_degree_max",))
         net_comp = _first_number(row, ("net_component_size",))
+        net_bc = _first_number(row, ("net_betweenness",))
+        net_cl = _first_number(row, ("net_closeness",))
+        net_pdeg = _first_number(row, ("net_planar_degree",))
 
         ctx_cols["ctx_water"].append(_mean_present([_invdist(dist_river, scales["water"])]))
         ctx_cols["ctx_woodland"].append(_mean_present([
             _scaled(phi_pct, 0.30),
+            _scaled(le_pct, 0.30),
             _invdist(dist_awi, scales["woodland"]),
         ]))
+        # Prefer the planar-network metrics (betweenness/closeness already 0-1); fall back to
+        # endpoint-snap degree/component size when planar metrics are unavailable.
         ctx_cols["ctx_connectivity"].append(_mean_present([
+            net_bc,
+            net_cl,
+            _scaled(None if net_pdeg is None else net_pdeg - 2.0, 4.0),
             _scaled(None if net_degree is None else net_degree - 1.0, 3.0),
             _scaled(None if net_comp is None else net_comp - 1.0, 10.0),
         ]))

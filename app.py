@@ -13,9 +13,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 from hsi import config
+from hsi.calibration import calibrate, join_activity
+from hsi.explain import explain_hedgerow, sensitivity
 from hsi.pipeline import run_features
 from hsi.report import build_method_statement, build_run_metadata, write_outputs
 from hsi.score import apply_scoring
@@ -29,6 +32,12 @@ CATEGORY_COLORS = {
     "Poor": "#d7191c",
     "Incomplete": "#9e9e9e",
 }
+CONFIDENCE_COLORS = {
+    "High": "#1a9641",
+    "Medium": "#fdae61",
+    "Low": "#d7191c",
+    "Incomplete": "#9e9e9e",
+}
 
 SI_TABLE_COLS = [f"hsi_{k}_score" for k in config.SI_KEYS]
 
@@ -38,6 +47,12 @@ SI_TABLE_COLS = [f"hsi_{k}_score" for k in config.SI_KEYS]
 # --------------------------------------------------------------------------------------
 
 def sidebar_controls():
+    # Calibration can suggest weights; apply them before the sliders are instantiated.
+    pending = st.session_state.pop("_pending_si_weights", None)
+    if pending:
+        for k, v in pending.items():
+            st.session_state[f"w_{k}"] = float(v)
+
     st.sidebar.header("1 · Input")
     uploaded = st.sidebar.file_uploader(
         "Hedgerow layer",
@@ -109,18 +124,15 @@ def compute_features(uploaded, input_crs, allow_live):
 # Map
 # --------------------------------------------------------------------------------------
 
-def render_map(gdf):
+def render_map(gdf, *, color_field: str = "hsi_wsp_category", color_map: dict | None = None):
+    color_map = color_map or CATEGORY_COLORS
     try:
         import folium
         from streamlit_folium import st_folium
     except Exception:
         st.info("Install folium + streamlit-folium to see the map. Showing centroids instead.")
         pts = gdf.to_crs("EPSG:4326")
-        st.map(
-            __import__("pandas").DataFrame(
-                {"lat": pts.geometry.centroid.y, "lon": pts.geometry.centroid.x}
-            )
-        )
+        st.map(pd.DataFrame({"lat": pts.geometry.centroid.y, "lon": pts.geometry.centroid.x}))
         return
 
     wgs = gdf.to_crs("EPSG:4326")
@@ -128,19 +140,18 @@ def render_map(gdf):
     fmap = folium.Map(location=[centroid.y, centroid.x], zoom_start=13, tiles="CartoDB positron")
 
     def style_fn(feat):
-        cat = feat["properties"].get("hsi_wsp_category", "Incomplete")
-        return {"color": CATEGORY_COLORS.get(cat, "#9e9e9e"), "weight": 4, "opacity": 0.9}
+        val = feat["properties"].get(color_field, "Incomplete")
+        return {"color": color_map.get(val, "#9e9e9e"), "weight": 4, "opacity": 0.9}
 
-    tooltip_fields = ["hf_uid", "hsi_priority_rank", "hsi_priority", "hsi_wsp_category", "hsi_survey_requirement"]
-    keep = [c for c in tooltip_fields if c in wgs.columns] + ["geometry"]
+    tooltip_fields = [c for c in ["hf_uid", "hsi_priority_rank", "hsi_priority", "hsi_wsp_category",
+                                  "hsi_confidence_level", "hsi_survey_requirement"] if c in wgs.columns]
+    keep = tooltip_fields + ["geometry"]
     folium.GeoJson(
         wgs[keep].to_json(),
         style_function=style_fn,
-        tooltip=folium.GeoJsonTooltip(fields=[c for c in tooltip_fields if c in wgs.columns]),
+        tooltip=folium.GeoJsonTooltip(fields=tooltip_fields),
     ).add_to(fmap)
-    legend = "&nbsp;".join(
-        f'<span style="color:{c}">&#9632;</span> {name}' for name, c in CATEGORY_COLORS.items()
-    )
+    legend = "&nbsp;".join(f'<span style="color:{c}">&#9632;</span> {name}' for name, c in color_map.items())
     fmap.get_root().html.add_child(folium.Element(
         f'<div style="position:fixed;bottom:20px;left:20px;z-index:9999;background:white;padding:6px 10px;border-radius:4px;font-size:12px">{legend}</div>'
     ))
@@ -208,7 +219,9 @@ def main():
     incomplete = int((scored["hsi_wsp_category"] == "Incomplete").sum())
     c4.metric("Incomplete (need LiDAR/field)", incomplete)
 
-    tab_table, tab_map, tab_data, tab_method = st.tabs(["📋 Ranked table", "🗺️ Map", "🔌 Data sources", "📄 Method & downloads"])
+    tab_table, tab_map, tab_explain, tab_calibrate, tab_data, tab_method = st.tabs(
+        ["📋 Ranked table", "🗺️ Map", "🔍 Explain", "🎯 Calibrate", "🔌 Data sources", "📄 Method & downloads"]
+    )
 
     with tab_table:
         display_cols = (
@@ -225,10 +238,77 @@ def main():
         )
 
     with tab_map:
+        color_choice = st.radio("Colour by", ["WSP category", "Confidence"], horizontal=True)
         if len(view):
-            render_map(view)
+            if color_choice == "Confidence":
+                render_map(view, color_field="hsi_confidence_level", color_map=CONFIDENCE_COLORS)
+            else:
+                render_map(view, color_field="hsi_wsp_category", color_map=CATEGORY_COLORS)
         else:
             st.warning("No hedgerows match the current filters.")
+
+    with tab_explain:
+        st.subheader("Why did a hedgerow score the way it did?")
+        pool = view if len(view) else scored
+        id_list = pool.sort_values("hsi_priority_rank")["hf_uid"].tolist()
+        if not id_list:
+            st.warning("No hedgerows to explain.")
+        else:
+            sel = st.selectbox("Hedgerow", id_list)
+            expl = explain_hedgerow(scored, sel, settings=settings)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Priority", expl["priority"])
+            m2.metric("Structure A", expl["structural_A"])
+            m3.metric("Context B", expl["context_B"])
+            m4.metric("WSP category", expl["wsp_category"])
+            contrib = pd.DataFrame(expl["contributions"])
+            st.caption("Each bar is that factor's additive share of the final priority (bars sum to the priority).")
+            st.bar_chart(contrib.set_index("factor")["contribution"])
+            with st.expander("Contribution detail"):
+                st.dataframe(contrib, use_container_width=True, hide_index=True)
+            st.markdown("**Global sensitivity** — how much moving each weight changes the rankings:")
+            sens = pd.DataFrame(sensitivity(scored, settings=settings))
+            st.bar_chart(sens.set_index("factor")["impact"])
+
+    with tab_calibrate:
+        st.subheader("Validate / calibrate against survey activity")
+        st.caption(
+            "Upload a table with a column matching one of your hedgerow attributes (an ID or name) plus an "
+            "activity/count column (e.g. crossing-point counts). The tool reports how well the HSI tracks "
+            "your data and can suggest re-tuned weights."
+        )
+        up = st.file_uploader("Activity table (CSV)", type=["csv"], key="cal_csv")
+        if up is not None:
+            adf = pd.read_csv(up)
+            st.dataframe(adf.head(), use_container_width=True, hide_index=True)
+            cols = list(adf.columns)
+            shared = [c for c in cols if c in scored.columns]
+            join_col = st.selectbox("Join column (must also exist in your hedgerow layer)", shared or cols)
+            act_col = st.selectbox("Activity / count column", [c for c in cols if c != join_col])
+            optimize = st.checkbox("Also suggest re-tuned SI weights", value=False)
+            if st.button("Run calibration"):
+                if join_col not in scored.columns:
+                    st.error(f"'{join_col}' is not a column in your hedgerow layer; pick a shared key.")
+                else:
+                    joined = join_activity(scored, adf, activity_col=act_col, join_col=join_col)
+                    matched = int(joined["activity"].notna().sum())
+                    st.write(f"Matched **{matched}** of {len(scored)} hedgerows.")
+                    report = calibrate(joined, activity_col="activity", settings=settings, optimize=optimize)
+                    if "error" in report:
+                        st.warning(report["error"])
+                    else:
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Spearman (priority)", report["spearman_priority_vs_activity"])
+                        c2.metric("Spearman (structure A)", report["spearman_structuralA_vs_activity"])
+                        c3.metric("AUC (presence)", report["auc_priority_vs_presence"])
+                        st.info(report["interpretation"])
+                        if "suggested_si_weights" in report:
+                            st.write("**Suggested SI weights** (validate before adopting):")
+                            st.json(report["suggested_si_weights"])
+                            st.caption(report.get("optimize_note", ""))
+                            if st.button("Apply suggested weights to the fine-tuning panel"):
+                                st.session_state["_pending_si_weights"] = report["suggested_si_weights"]
+                                st.rerun()
 
     with tab_data:
         st.write("Which data sources returned data for this AOI:")

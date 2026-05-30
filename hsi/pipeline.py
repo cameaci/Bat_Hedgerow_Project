@@ -15,6 +15,7 @@ from hedge_features.features.geometry import add_geometry_metrics
 from hedge_features.features.network import add_network_metrics
 
 from . import config
+from .connectivity import add_connectivity
 from .context import compute_context_subindices
 from .datasets import DataResolver
 from .indices import compute_si_proxies
@@ -64,6 +65,8 @@ def run_features(
     gdf = add_geometry_metrics(gdf)
     gdf, net_notes = add_network_metrics(gdf, tolerance_m=1.0)
     notes.extend(net_notes)
+    gdf, conn_notes = add_connectivity(gdf)
+    notes.extend(conn_notes)
 
     resolver = DataResolver(gdf, data_dir=data_dir, allow_live_fetch=allow_live_fetch)
 
