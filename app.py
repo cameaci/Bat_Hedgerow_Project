@@ -16,13 +16,15 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from hedge_features.exceptions import InputValidationError
+from hedge_features.utils import sha1_text
 from hsi import config
 from hsi.calibration import calibrate, join_activity
 from hsi.explain import explain_hedgerow, sensitivity
 from hsi.pipeline import run_features
 from hsi.report import build_method_statement, build_run_metadata, write_outputs
 from hsi.score import apply_scoring
-from hedge_features.utils import sha1_bytes
+from hsi.uploads import ACCEPTED_UPLOAD_EXTENSIONS, save_uploaded_geodata, uploaded_files_fingerprint
 
 st.set_page_config(page_title="Bat Hedgerow HSI (England)", layout="wide")
 
@@ -56,8 +58,12 @@ def sidebar_controls():
     st.sidebar.header("1 · Input")
     uploaded = st.sidebar.file_uploader(
         "Hedgerow layer",
-        type=["zip", "gpkg", "geojson", "json", "shp"],
-        help="Zipped shapefile (.shp+.shx+.dbf[+.prj]), GeoPackage or GeoJSON of LineString hedgerows.",
+        type=ACCEPTED_UPLOAD_EXTENSIONS,
+        accept_multiple_files=True,
+        help=(
+            "Upload one GeoPackage, GeoJSON or zipped shapefile. For a direct shapefile upload, "
+            "select its matching .shp, .shx and .dbf files together (plus .prj if available)."
+        ),
     )
     input_crs = st.sidebar.text_input(
         "Input CRS (only if the file has no .prj)", value="", placeholder="e.g. EPSG:27700"
@@ -99,20 +105,17 @@ def sidebar_controls():
 # Heavy GIS stage (cached in session_state)
 # --------------------------------------------------------------------------------------
 
-def compute_features(uploaded, input_crs, allow_live):
-    raw = uploaded.getvalue()
-    key = sha1_bytes(raw + str(input_crs).encode() + str(allow_live).encode(), length=20)
+def compute_features(uploaded_files, input_crs, allow_live):
+    upload_key = uploaded_files_fingerprint(uploaded_files)
+    key = sha1_text(f"{upload_key}:{input_crs}:{allow_live}", length=20)
     if st.session_state.get("features_key") == key:
         return st.session_state["features"]
 
-    suffix = Path(uploaded.name).suffix.lower() or ".zip"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(raw)
-        tmp_path = tmp.name
-
     with st.status("Running GIS feature extraction…", expanded=True) as status:
         st.write("Reading hedgerows and acquiring open data (this can take a minute)…")
-        result = run_features(tmp_path, input_crs=input_crs, allow_live_fetch=allow_live)
+        with tempfile.TemporaryDirectory(prefix="hsi_upload_") as tmp_dir:
+            source_path = save_uploaded_geodata(uploaded_files, tmp_dir)
+            result = run_features(source_path, input_crs=input_crs, allow_live_fetch=allow_live)
         status.update(label=f"Features ready for {len(result.gdf)} hedgerows.", state="complete")
 
     st.session_state["features"] = result
@@ -171,7 +174,7 @@ def main():
 
     uploaded, input_crs, allow_live, settings = sidebar_controls()
 
-    if uploaded is None:
+    if not uploaded:
         st.info(
             "⬅️ Upload a hedgerow layer to begin. For full structural scoring (height, width, "
             "gappiness, trees) drop EA 1 m LiDAR tiles into `data/lidar/dtm` and `data/lidar/dsm` "
@@ -180,7 +183,11 @@ def main():
         )
         return
 
-    features = compute_features(uploaded, input_crs, allow_live)
+    try:
+        features = compute_features(uploaded, input_crs, allow_live)
+    except InputValidationError as exc:
+        st.error(str(exc))
+        return
     scored = apply_scoring(features.gdf, settings=settings)
 
     # ---- result filters ----

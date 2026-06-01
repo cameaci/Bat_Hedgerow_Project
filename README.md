@@ -50,6 +50,10 @@ pip install -e .                 # installs the GIS + Streamlit stack
 streamlit run app.py             # open the app, upload a hedgerow layer
 ```
 
+For a shapefile, upload a `.zip` containing its `.shp`, `.shx`, and `.dbf` files (plus `.prj` if
+available), or select those matching component files together in the app. A `.shp` file alone is
+not a complete dataset.
+
 Try it with the bundled sample:
 
 ```bash
