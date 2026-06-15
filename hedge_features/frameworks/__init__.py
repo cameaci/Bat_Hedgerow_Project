@@ -1,2 +1,0 @@
-"""Bundled screening framework artefacts."""
-
